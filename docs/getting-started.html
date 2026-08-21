@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Install, configure, and run OODZ Agent.">
+  <title>Getting started · OODZ Agent</title>
+  <link href="src/pico/pico.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top docs-navbar"><div class="container">
+    <a class="navbar-brand fw-bold" href="index.html"><span class="brand-mark">O</span> OODZ Agent</a>
+    <div class="collapse navbar-collapse" id="docsNav"><div class="navbar-nav ms-auto">
+      <a class="nav-link" href="index.html">Overview</a><a class="nav-link active" href="getting-started.html">Getting started</a>
+      <a class="nav-link" href="architecture.html">Architecture</a><a class="nav-link" href="plugins.html">Plugins</a><a class="nav-link" href="oodz-framework.html">OODZ context</a><a class="nav-link" href="operations.html">Operations</a>
+    </div></div>
+  </div></nav>
+
+  <main class="container py-5">
+    <div class="section-heading"><span>Guide</span><h1 class="display-4">Getting started</h1><p class="lead text-secondary">Install the runtime, configure DeepSeek or Ollama, and learn the interactive commands.</p></div>
+    <div class="docs-shell">
+      <aside class="docs-sidebar"><nav class="nav flex-column"><a class="nav-link" href="#requirements">Requirements</a><a class="nav-link" href="#configure">Configuration</a><a class="nav-link" href="#run">Run the agent</a><a class="nav-link" href="#commands">CLI commands</a></nav></aside>
+      <article class="docs-content">
+        <section id="requirements"><h2>Requirements</h2>
+          <ul><li>Tcl 9.0 or newer</li><li>Tcl TLS package</li><li>Tcllib packages: <code>http</code>, <code>json</code>, <code>json::write</code>, and <code>fileutil</code></li></ul>
+          <p>The repository bundles <code>inifile</code>, <code>tConfClass</code>, <code>tLogger</code>, and <code>zesty</code>.</p>
+          <div class="code-block"><header><span>Check packages</span><span>shell</span></header><pre><code>tclsh &lt;&lt;'EOF'
+foreach package {Tcl tls http json json::write fileutil} {
+    puts "$package [package require $package]"
+}
+EOF</code></pre></div>
+        </section>
+        <section id="configure"><h2>Configuration</h2><p>Create the ignored private configuration, restrict it to your user, and then edit it:</p>
+          <div class="code-block"><header><span>Create private configuration</span><span>shell</span></header><pre><code>cp conf/conf.example.ini conf/conf.ini
+chmod 600 conf/conf.ini</code></pre></div>
+          <p>Git and Fossil ignore <code>conf/conf.ini</code>. Publish only <code>conf/conf.example.ini</code>, which contains placeholders and conservative defaults.</p>
+          <div class="code-block"><header><span>conf/conf.ini</span><span>ini</span></header><pre><code>[LLM]
+provider = deepseek
+url = https://api.deepseek.com/chat/completions
+api_key = replace-with-your-key
+model = deepseek-v4-flash
+thinking = false
+timeout = 60000
+max_retries = 2
+retry_delay_ms = 250
+
+[Agent]
+name = CoderBot
+role = You are an expert Tcl programmer who writes short, clean code.
+max_iterations = 16
+max_history_messages = 40
+summarize_history = false
+history_file = .oodz/history.json
+
+[Workspace]
+root = .
+instructions = AGENT.md
+
+[OODZ]
+root =
+
+[Plugins]
+directories =
+timeout_ms = 10000
+max_output_chars = 65536
+
+[Skills]
+directories =
+max_file_bytes = 65536
+
+[Logging]
+file = .oodz/oodz.log
+level = info
+
+[GUI]
+theme_package = ttk::theme::Arc
+theme = Arc-Dark
+
+[Runner]
+enabled = false
+tclsh = tclsh9.0
+backend = direct
+sandbox = bwrap
+timeout_ms = 10000
+max_output_chars = 65536
+project_tests_enabled = false
+project_tests_executable = tclsh9.0
+project_tests_arguments = tests/all.tcl
+project_tests_timeout_ms = 60000</code></pre></div>
+          <p><code>Workspace.instructions</code> names an optional UTF-8 instruction filename. The root file is sent with every request. Before changing nested files, <code>load_project_instructions</code> discovers matching files from the workspace root through the target directory. Closer instructions refine conventions for their subtree. Leave the setting empty to disable project instructions.</p>
+          <p><code>Plugins.directories</code> accepts comma-separated absolute or installation-relative personal plugin roots. Each configured directory must already exist.</p>
+          <p><code>Skills.directories</code> accepts comma-separated personal skill roots. Skill names and trigger descriptions are included in the system prompt; complete instructions are retrieved only when the model calls <code>load_skill</code>.</p>
+          <h3>Windows</h3>
+          <p>Use forward slashes for absolute INI paths, for example <code>D:/projects/client</code>. The built-in <code>skills/</code> directory is always loaded; personal skill roots may be anywhere and are added with <code>Skills.directories</code>. The CLI selects the UTF-8 console code page and uses ASCII borders for CMD and PowerShell compatibility.</p>
+          <div class="code-block"><header><span>PowerShell</span><span>powershell</span></header><pre><code>Copy-Item conf\conf.example.ini conf\conf.ini
+tclsh90.exe .\main.tcl
+wish90.exe .\gui.tcl</code></pre></div>
+          <p><code>GUI.theme_package</code> optionally loads a Tcl package from <code>lib/</code> or one of its immediate package directories. <code>GUI.theme</code> then selects one of the themes provided by that package. Leave both empty to use the platform default. The example loads the bundled Arc package and selects <code>Arc-Dark</code>; use <code>Arc</code> for its light variant. Invalid package or theme names stop GUI startup with a clear error.</p>
+          <p>When both Arc variants are available, the action bar includes a <strong>Dark</strong> toggle for switching the current GUI session. The configured <code>GUI.theme</code> remains the preference used at the next startup.</p>
+          <blockquote class="notice warning"><strong>Danger: this is not a safe agent.</strong> The default <code>direct</code> runner executes AI-created Tcl with the same operating-system permissions as the user. It can read, modify, or delete accessible files, start processes, access the network, and inspect environment variables. Enable it only if you understand the consequences and maintain recoverable backups or version control.</blockquote>
+          <p><code>run_tcl_file</code> accepts only an approved workspace-relative Tcl file and enforces time/output limits, but the <code>direct</code> backend provides no OS isolation. Every execution receives a separate approval; “All for session” does not apply. Linux users may select <code>Runner.backend = bubblewrap</code> for optional containment. Set <code>Runner.enabled = false</code> to remove execution entirely.</p>
+          <p>Enable <code>Runner.project_tests_enabled</code> to expose <code>run_project_tests</code>. Its executable and Tcl-list arguments come only from trusted configuration; the model supplies no command fields. The profile uses the same backend and always requires separate approval.</p>
+          <blockquote class="notice warning"><strong>Keep the key private.</strong> Do not commit or share a real API credential.</blockquote>
+          <h3>Local Ollama</h3>
+          <p>Ollama uses the same OpenAI-compatible client. Choose a locally installed model that supports tool calling.</p>
+          <div class="code-block"><header><span>conf/conf.ini</span><span>ini</span></header><pre><code>[LLM]
+provider = ollama
+url = http://localhost:11434/v1/chat/completions
+api_key =
+model = qwen3
+thinking = false
+timeout = 60000
+max_retries = 2
+retry_delay_ms = 250</code></pre></div>
+        </section>
+        <section id="run"><h2>Run the agent</h2>
+          <div class="code-block"><header><span>Interactive</span><span>shell</span></header><pre><code>tclsh main.tcl</code></pre></div>
+          <p>Interactive responses stream to the terminal and conversation context persists across restarts.</p>
+          <div class="code-block"><header><span>One shot</span><span>shell</span></header><pre><code>tclsh main.tcl "Explain the plugin architecture."</code></pre></div>
+          <p>One-shot mode remains stateless and prints one complete answer to standard output.</p>
+        </section>
+        <section id="commands"><h2>CLI commands</h2>
+          <div class="table-responsive"><table class="table command-table"><tbody>
+            <tr><td><code>/help</code></td><td>Show available commands.</td></tr><tr><td><code>/tools</code></td><td>List registered plugins.</td></tr>
+            <tr><td><code>/skills</code></td><td>List discovered skills and their trigger descriptions.</td></tr>
+            <tr><td><code>/multi</code></td><td>Collect multiline input; finish with <code>/send</code> or abort with <code>/cancel</code>.</td></tr>
+            <tr><td><code>/tool name JSON</code></td><td>Run a plugin locally without calling DeepSeek.</td></tr>
+            <tr><td><code>/oodz_trns label</code></td><td>Translate and save a SaaS label using native scripts.</td></tr>
+            <tr><td><code>/history</code></td><td>Display conversation history.</td></tr><tr><td><code>/logs</code></td><td>Show 20 recent log entries.</td></tr>
+            <tr><td><code>/new</code></td><td>Clear memory and persistent history.</td></tr><tr><td><code>/exit</code></td><td>End the session.</td></tr>
+          </tbody></table></div>
+          <div class="code-block"><header><span>Multiline prompt</span><span>oodz</span></header><pre><code>/multi
+Create an NX class that:
+- inherits from ::oodz::baseObj
+- loads a client by identifier
+/send</code></pre></div>
+          <div class="code-block"><header><span>Direct local tool</span><span>oodz</span></header><pre><code>/tool xml_validate {"path":"layout.xml"}</code></pre></div>
+        </section>
+      </article>
+    </div>
+  </main>
+  <footer class="docs-footer"><div class="container d-flex justify-content-between"><a href="index.html">← Overview</a><a href="architecture.html">Next: Architecture →</a></div></footer>
+</body></html>

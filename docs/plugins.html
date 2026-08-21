@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Create and secure OODZ Agent plugins.">
+  <title>Plugins · OODZ Agent</title>
+  <link href="src/pico/pico.min.css" rel="stylesheet"><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top docs-navbar"><div class="container">
+    <a class="navbar-brand fw-bold" href="index.html"><span class="brand-mark">O</span> OODZ Agent</a>
+    <div class="collapse navbar-collapse" id="docsNav"><div class="navbar-nav ms-auto"><a class="nav-link" href="index.html">Overview</a><a class="nav-link" href="getting-started.html">Getting started</a><a class="nav-link" href="architecture.html">Architecture</a><a class="nav-link active" href="plugins.html">Plugins</a><a class="nav-link" href="oodz-framework.html">OODZ context</a><a class="nav-link" href="operations.html">Operations</a></div></div>
+  </div></nav>
+  <main class="container py-5">
+    <div class="section-heading"><span>Tools</span><h1 class="display-4">Plugin development</h1><p class="lead text-secondary">Extend the agent with declarative schemas and small Tcl handlers.</p></div>
+    <div class="docs-shell">
+      <aside class="docs-sidebar"><nav class="nav flex-column"><a class="nav-link" href="#built-in">Built-in tools</a><a class="nav-link" href="#layout">Directory layout</a><a class="nav-link" href="#manifest">Manifest</a><a class="nav-link" href="#handler">Handler</a><a class="nav-link" href="#safety">Safety</a></nav></aside>
+      <article class="docs-content">
+        <section id="built-in"><h2>Built-in tools</h2><div class="row g-3">
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>read_file</code></h3><p>Read one UTF-8 workspace file.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>list_files</code></h3><p>List files at a workspace-relative path.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>search_files</code></h3><p>Recursive, case-insensitive literal text search.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>file_info</code></h3><p>Inspect path type, size, modification time, and permissions.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>xml_validate</code></h3><p>Validate UTF-8 XML and report its root element using tDOM.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>oodz_lookup</code></h3><p>Search a compact, source-linked index of OODZ framework capabilities.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>oodz_read</code></h3><p>Read up to 200 numbered UTF-8 lines from the configured OODZ source root.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>oodz_search</code></h3><p>Recursively search OODZ source with bounded path, line, and preview results.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>save_translation</code></h3><p>Validate and POST six translations to the fixed SaaS endpoint, with dry-run support.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>make_directory</code></h3><p>Create directories and missing parents after explicit approval.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>edit_file</code></h3><p>Replace one unique exact text fragment after explicit approval.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>apply_patch</code></h3><p>Atomically apply exact SEARCH/REPLACE blocks.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>copy_file</code></h3><p>Copy a file without overwriting an existing destination.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>move_file</code></h3><p>Move or rename a file without overwriting.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>delete_file</code></h3><p>Delete one file; directory deletion is refused.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>write_file</code></h3><p>Write UTF-8 content after explicit user approval.</p></div></div></div>
+        </div></section>
+        <section id="layout"><h2>Directory layout</h2><div class="file-tree">plugins/
+└── my_tool/
+    ├── plugin.ini
+    └── plugin.tcl</div><p class="mt-3">Discovery is deterministic and loads only direct children of configured plugin directories.</p></section>
+        <section id="manifest"><h2>Manifest</h2><div class="code-block"><header><span>plugin.ini</span><span>ini</span></header><pre><code>[plugin]
+name = my_tool
+description = Explain clearly when the model should use this tool.
+permission = read
+entrypoint = plugin.tcl
+handler = ::plugins::my_tool::execute
+parameters = {"type":"object","properties":{},"required":[],"additionalProperties":false}</code></pre></div>
+          <p>The JSON schema is shown to the model and also validates arguments before execution. Names must be unique.</p></section>
+        <section id="handler"><h2>Tcl handler</h2><div class="code-block"><header><span>plugin.tcl</span><span>tcl</span></header><pre><code>namespace eval ::plugins::my_tool {}
+
+proc ::plugins::my_tool::execute {workspaceRoot arguments settings} {
+    return "Tool result"
+}</code></pre></div>
+          <p><code>workspaceRoot</code> is the configured project root, <code>arguments</code> is the validated model-provided dictionary, and <code>settings</code> contains trusted values from the plugin's optional <code>[settings]</code> section. Settings are not included in model-visible tool definitions or logged automatically. Return concise text suitable for sending back to the model, and never return secrets.</p></section>
+        <section id="safety"><h2>Safety boundary</h2><ul><li>Filesystem paths remain inside the configured workspace.</li><li>Reference tools such as <code>oodz_read</code> use separate named read-only roots.</li><li>Write plugins require confirmation for each call.</li><li>Child interpreters enforce execution deadlines and result limits.</li><li>Manifest paths and workspace paths reject escapes.</li><li>Installed Tcl plugins are trusted local code and must be reviewed before installation.</li></ul></section>
+        <section id="http"><h2>Scoped HTTP tools</h2><p>The built-in <code>http_get</code>, <code>http_post</code>, <code>http_put</code>, <code>http_patch</code>, and <code>http_delete</code> plugins take only a relative path and optional query dictionary. Their private settings fix the base URL, allowed path prefixes, timeout, maximum response size, and TLS policy. Full URLs, traversal, fragments, embedded query strings, and non-allowlisted paths are rejected.</p><p>POST, PUT, and PATCH require a validated JSON-object string; DELETE accepts one optionally. JSON is sent as unchanged UTF-8. All four mutating tools require approval for every request. HTTP status codes and response bodies are returned to the agent.</p><p>Add private headers with settings such as <code>header.Authorization = Bearer ...</code> or <code>header.X-API-Key = ...</code>. These values are not model-visible. Malformed headers and attempts to override transport-controlled headers are rejected. Protect configuration files that contain credentials.</p><p>For private certificates, use <code>tls_verify = true</code> with <code>tls_ca_file</code> pointing to a trusted PEM certificate. A development-only <code>tls_verify = false</code> mode accepts self-signed certificates without authenticating the server; never use it on public or untrusted networks.</p><p>GET is treated as read-only and does not require approval. Configure only endpoints where GET does not mutate state.</p></section>
+        <section id="fossil">
+          <h2>Fossil tools</h2>
+          <h3>Inspect the checkout</h3>
+          <p><code>fossil_status</code> shows checkout metadata and local changes. <code>fossil_changes</code> gives a concise classified list of managed changes that would enter the next commit. <code>fossil_extras</code> lists unmanaged files using workspace-relative paths and the checkout's ignore policy. <code>fossil_ls</code> lists every managed file with its current status.</p>
+          <p><code>fossil_diff</code> shows all uncommitted changes or accepts one confined file. It forces Fossil's internal unified diff engine, preventing checkout configuration from launching an external diff command. <code>fossil_info</code> reports current checkout metadata, and <code>fossil_timeline</code> returns 1–100 recent check-ins. These inspection tools are read-only and do not require approval.</p>
+          <h3>Branches</h3>
+          <p><code>fossil_branches</code> lists open and closed branches, with Fossil marking the current and private branches. <code>fossil_branch_info</code> accepts one bounded branch name and returns its metadata. Both are read-only.</p>
+          <p><code>fossil_branch_new</code> creates a branch from one named basis check-in but does not switch the checkout. <code>fossil_branch_switch</code> switches the entire checkout to one named branch while retaining uncommitted changes. <code>fossil_branch_close</code> marks one branch closed without deleting its history, and <code>fossil_branch_reopen</code> reverses that marker. <code>fossil_merge</code> merges one bounded branch or check-in into the current checkout, keeps undo enabled, and leaves the result uncommitted for review. These operations require approval and disable autosync; merge conflicts may require manual resolution.</p>
+          <h3>Local changes and history</h3>
+          <p><code>fossil_add</code> schedules one existing confined file for addition. <code>fossil_commit</code> commits all checkout changes using a required bounded message and disables interactive prompts. <code>fossil_update</code> updates the whole checkout to its unique local descendant leaf. These operations require approval and disable autosync.</p>
+          <p><code>fossil_revert</code> discards changes in one existing file while preserving Fossil's normal undo snapshot. <code>fossil_undo</code> and <code>fossil_redo</code> restore or reapply one confined path using Fossil's single-level undo state. <code>fossil_remove</code> marks one file removed and deletes it from disk; unlike revert, this explicit hard removal is not recoverable through Fossil's undo stack.</p>
+          <p><code>fossil_stash_list</code> lists stash entries and their files without approval. <code>fossil_stash_save</code> saves all current changes with a required bounded comment and reverts the checkout to its baseline. <code>fossil_stash_pop</code> applies and removes the newest stash and may produce conflicts. Save and pop require approval; none of these tools accepts model-selected files or stash IDs.</p>
+          <h3>Execution boundary</h3>
+          <p>Every Fossil plugin uses the configured workspace and controlled process runner, inheriting its timeout, output limit, and execution backend. Local operations perform no implicit network synchronization. <code>fossil_pull</code> and <code>fossil_push</code> are explicit approval-gated network operations that use only the checkout's configured default remote and accept no URL or credentials from the model. Pull changes only the local repository and does not update working files; push sends public sharable changes and excludes private branches.</p>
+        </section>
+      </article>
+    </div>
+  </main>
+  <footer class="docs-footer"><div class="container d-flex justify-content-between"><a href="architecture.html">← Architecture</a><a href="oodz-framework.html">Next: OODZ context →</a></div></footer>
+</body></html>

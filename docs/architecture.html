@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="OODZ Agent architecture and execution flow.">
+  <title>Architecture · OODZ Agent</title>
+  <link href="src/pico/pico.min.css" rel="stylesheet"><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top docs-navbar"><div class="container">
+    <a class="navbar-brand fw-bold" href="index.html"><span class="brand-mark">O</span> OODZ Agent</a>
+    <div class="collapse navbar-collapse" id="docsNav"><div class="navbar-nav ms-auto"><a class="nav-link" href="index.html">Overview</a><a class="nav-link" href="getting-started.html">Getting started</a><a class="nav-link active" href="architecture.html">Architecture</a><a class="nav-link" href="plugins.html">Plugins</a><a class="nav-link" href="oodz-framework.html">OODZ context</a><a class="nav-link" href="operations.html">Operations</a></div></div>
+  </div></nav>
+  <main class="container py-5">
+    <div class="section-heading"><span>Internals</span><h1 class="display-4">Architecture</h1><p class="lead text-secondary">Clear boundaries between terminal UI, agent reasoning, provider transport, plugins, and storage.</p></div>
+    <div class="docs-shell">
+      <aside class="docs-sidebar"><nav class="nav flex-column"><a class="nav-link" href="#flow">Execution flow</a><a class="nav-link" href="#components">Components</a><a class="nav-link" href="#agent-loop">Agent loop</a><a class="nav-link" href="#api">API behavior</a></nav></aside>
+      <article class="docs-content">
+        <section id="flow"><h2>Execution flow</h2><div class="architecture-flow"><div><strong>CLI / GUI</strong><small>main.tcl · gui.tcl</small></div><b>→</b><div><strong>Agent</strong><small>agentClass.tcl</small></div><b>↔</b><div><strong>Provider</strong><small>clientClass.tcl</small></div><b>↔</b><div><strong>Plugins</strong><small>pluginRegistry.tcl</small></div></div></section>
+        <section id="components"><h2>Components</h2><div class="table-responsive"><table class="table"><thead><tr><th>File</th><th>Responsibility</th></tr></thead><tbody>
+          <tr><td><code>main.tcl</code></td><td>Configuration, object wiring, interactive commands, presentation, and process exit codes.</td></tr>
+          <tr><td><code>agentClass.tcl</code></td><td>Conversation memory and the bounded model/tool execution loop.</td></tr>
+          <tr><td><code>clientClass.tcl</code></td><td>DeepSeek and Ollama payloads, HTTP/TLS, SSE streaming, parsing, fallback, and retry behavior.</td></tr>
+          <tr><td><code>pluginRegistry.tcl</code></td><td>Plugin discovery, validation, approval, sandboxing, and invocation.</td></tr>
+          <tr><td><code>conversationStore.tcl</code></td><td>Versioned JSON persistence with atomic writes.</td></tr>
+        </tbody></table></div></section>
+        <section id="agent-loop"><h2>Agent loop</h2><ol><li>Combine stored history with the new user task.</li><li>Send messages and plugin schemas to the configured provider.</li><li>Append the assistant message.</li><li>Execute requested plugins and append their results.</li><li>Repeat until final content arrives or the iteration limit is reached.</li><li>Commit and persist history only after success.</li></ol></section>
+        <section id="api"><h2>API behavior</h2><div class="row g-3">
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><h3>Interactive</h3><p>SSE fragments stream to the terminal. An unexpectedly empty stream falls back to one buffered request.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><h3>One shot</h3><p>The client buffers the complete response so scripts receive clean standard output.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><h3>Retries</h3><p>Transport failures, HTTP 429, and HTTP 5xx responses use bounded exponential backoff.</p></div></div></div>
+          <div class="col-md-6"><div class="card h-100"><div class="card-body"><h3>Messages</h3><p>Canonical dictionaries preserve content, reasoning metadata, tool calls, and tool results.</p></div></div></div>
+        </div></section>
+      </article>
+    </div>
+  </main>
+  <footer class="docs-footer"><div class="container d-flex justify-content-between"><a href="getting-started.html">← Getting started</a><a href="plugins.html">Next: Plugins →</a></div></footer>
+</body></html>

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Operate, test, and troubleshoot OODZ Agent.">
+  <title>Operations · OODZ Agent</title>
+  <link href="src/pico/pico.min.css" rel="stylesheet"><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top docs-navbar"><div class="container">
+    <a class="navbar-brand fw-bold" href="index.html"><span class="brand-mark">O</span> OODZ Agent</a>
+    <div class="collapse navbar-collapse" id="docsNav"><div class="navbar-nav ms-auto"><a class="nav-link" href="index.html">Overview</a><a class="nav-link" href="getting-started.html">Getting started</a><a class="nav-link" href="architecture.html">Architecture</a><a class="nav-link" href="plugins.html">Plugins</a><a class="nav-link" href="oodz-framework.html">OODZ context</a><a class="nav-link active" href="operations.html">Operations</a></div></div>
+  </div></nav>
+  <main class="container py-5">
+    <div class="section-heading"><span>Maintenance</span><h1 class="display-4">Operations</h1><p class="lead text-secondary">Persistent data, diagnostics, testing, troubleshooting, and current boundaries.</p></div>
+    <div class="docs-shell">
+      <aside class="docs-sidebar"><nav class="nav flex-column"><a class="nav-link" href="#history">History</a><a class="nav-link" href="#logging">Logging</a><a class="nav-link" href="#testing">Testing</a><a class="nav-link" href="#troubleshooting">Troubleshooting</a><a class="nav-link" href="#limits">Current limits</a></nav></aside>
+      <article class="docs-content">
+        <section id="history"><h2>Persistent history</h2><p>Interactive conversations are stored in <code>.oodz/history.json</code>. The store is versioned, UTF-8 encoded, atomically replaced, and owner-readable where the platform supports permissions.</p><p>History is loaded on startup and saved only after successful turns. Run <code>/new</code> to clear memory and remove the stored file. One-shot commands do not use history.</p></section>
+        <section id="logging"><h2>Diagnostics</h2><p>Technical logs are written to <code>.oodz/oodz.log</code> instead of the conversation. Use <code>/logs</code> for the latest 20 entries.</p>
+          <div class="code-block"><header><span>Separate terminal</span><span>shell</span></header><pre><code>tail -f .oodz/oodz.log</code></pre></div>
+          <p>Actionable CLI errors and write approvals remain visible in the main terminal.</p></section>
+        <section id="testing"><h2>Offline test suite</h2><div class="code-block"><header><span>Project verification</span><span>shell</span></header><pre><code>tclsh tests/all.tcl</code></pre></div>
+          <blockquote class="notice success"><strong>Current result:</strong> 106 passed, 0 failed, 0 skipped.</blockquote>
+          <p>Fake clients and transports test the agent loop, streaming, retries, JSON, plugins, safety limits, CLI behavior, persistence, and log routing without network calls or a real key.</p></section>
+        <section id="troubleshooting"><h2>Troubleshooting</h2>
+          <details open><summary>Empty streaming response</summary><p>The client automatically retries once without streaming. Inspect <code>/logs</code> if the buffered request also fails.</p></details>
+          <details><summary>No terminal colors</summary><p>Ensure output is attached to a TTY, <code>TERM</code> is not <code>dumb</code>, and <code>NO_COLOR</code> is unset. Windows uses ASCII borders for CMD and PowerShell compatibility while retaining UTF-8 model output.</p></details>
+          <details><summary>Windows path reports that it escapes its root</summary><p>Use the current release, which compares normalized path components on Windows. Write INI paths with forward slashes, for example <code>D:/projects/app</code>. <code>Workspace.instructions</code> must be a filename relative to the workspace, such as <code>AGENT.md</code>.</p></details>
+          <details><summary>Missing configuration or API key</summary><p>Copy <code>conf/conf.example.ini</code> to the ignored <code>conf/conf.ini</code>, restrict it to your user, and set <code>LLM.api_key</code> there. Never paste the real value into logs or documentation.</p></details>
+        </section>
+        <section id="limits"><h2>Current limits</h2><ul><li>Request history is bounded by message count, but older history is not summarized yet.</li><li>The complete stored history can continue growing on disk.</li><li>Provider adapters currently support DeepSeek and local Ollama; other APIs may require an adapter.</li><li>JSON, YAML, and SQLite configuration backends are experimental and unsupported.</li><li>Plugin Tcl code and the direct process runner are not OS-sandboxed and must be treated as trusted, potentially dangerous code.</li></ul><p><strong>Possible next work:</strong> summarize older turns before they leave the request window.</p></section>
+      </article>
+    </div>
+  </main>
+  <footer class="docs-footer"><div class="container d-flex justify-content-between"><a href="oodz-framework.html">← OODZ context</a><a href="index.html">Back to overview ↑</a></div></footer>
+</body></html>

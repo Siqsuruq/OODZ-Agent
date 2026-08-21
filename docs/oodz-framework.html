@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Give OODZ Agent selective, token-efficient context about the OODZ NaviServer framework.">
+  <title>OODZ framework context · OODZ Agent</title>
+  <link href="src/pico/pico.min.css" rel="stylesheet"><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top docs-navbar"><div class="container">
+    <a class="navbar-brand fw-bold" href="index.html"><span class="brand-mark">O</span> OODZ Agent</a>
+    <div class="collapse navbar-collapse" id="docsNav"><div class="navbar-nav ms-auto"><a class="nav-link" href="index.html">Overview</a><a class="nav-link" href="getting-started.html">Getting started</a><a class="nav-link" href="architecture.html">Architecture</a><a class="nav-link" href="plugins.html">Plugins</a><a class="nav-link active" href="oodz-framework.html">OODZ context</a><a class="nav-link" href="operations.html">Operations</a></div></div>
+  </div></nav>
+  <main class="container py-5">
+    <div class="section-heading"><span>Framework reference</span><h1 class="display-4">OODZ context without the token flood</h1><p class="lead text-secondary">Keep project rules concise, discover capabilities through an index, and retrieve only the relevant framework source.</p></div>
+    <div class="docs-shell">
+      <aside class="docs-sidebar"><nav class="nav flex-column"><a class="nav-link" href="#boundaries">Access boundaries</a><a class="nav-link" href="#instructions">Project instructions</a><a class="nav-link" href="#index">Framework index</a><a class="nav-link" href="#workflow">Lookup workflow</a><a class="nav-link" href="#tokens">Token behavior</a><a class="nav-link" href="#maintain">Maintain the index</a></nav></aside>
+      <article class="docs-content">
+        <section id="boundaries"><h2>Two separate roots</h2><p>The client project remains the writable workspace. OODZ is registered independently as a named, read-only reference root.</p><div class="table-responsive"><table class="table"><thead><tr><th>Root</th><th>Purpose</th><th>Access</th></tr></thead><tbody><tr><td><code>Workspace.root</code></td><td>Client application</td><td>Read and approved writes</td></tr><tr><td><code>OODZ.root</code></td><td>Shared framework source</td><td>Lookup, search, and read only</td></tr></tbody></table></div><div class="code-block"><header><span>conf/conf.ini</span><span>ini</span></header><pre><code>[Workspace]
+root = /opt/ns/clients/dev
+instructions = AGENT.md
+
+[OODZ]
+root = /opt/ns/tcl/oodz</code></pre></div><p>OODZ paths must be relative to the configured reference root. Absolute paths and directory escapes are rejected.</p></section>
+        <section id="instructions"><h2>Keep AGENT.md small</h2><p><code>AGENT.md</code> contains stable project conventions and is included in every model request. Use it to explain NX inheritance and tell the agent to consult OODZ tools—not to copy full framework documentation.</p><div class="code-block"><header><span>Workspace/AGENT.md</span><span>markdown</span></header><pre><code># Project instructions
+
+This project uses NaviServer, NX, and OODZ.
+
+- Prefer existing OODZ components over replacements.
+- Application domain classes normally inherit from `::oodz::baseObj`.
+- Use `oodz_lookup`, then `oodz_search` and `oodz_read`, before using an unfamiliar API.</code></pre></div><p>The configured instruction file must be UTF-8, workspace-relative, and no larger than 16 KiB.</p></section>
+        <section id="index"><h2>Compact capability index</h2><p><code>plugins/oodz_lookup/FRAMEWORK_INDEX.json</code> records exact class names, categories, short summaries, keywords, and source paths. It currently describes core objects, SQL builders, database access, date/time, JSON, REST, sessions, storage, UI, HTTP, and security helpers.</p><div class="code-block"><header><span>Index entry</span><span>json</span></header><pre><code>{
+  "name": "::oodz::baseObj",
+  "category": "database domain objects",
+  "summary": "Abstract table-backed domain object...",
+  "keywords": ["nx", "domain", "crud", "save2db"],
+  "source": "base/baseObj.tcl"
+}</code></pre></div><p>Names reflect the real source. Some OODZ classes are namespaced while current SQL builders and <code>::httpClientClass</code> are global.</p></section>
+        <section id="workflow"><h2>Lookup, search, then read</h2><ol><li>Use <code>oodz_lookup</code> to discover likely components.</li><li>Use <code>oodz_search</code> to locate exact methods or properties.</li><li>Use <code>oodz_read</code> for only the relevant numbered lines.</li><li>Write code in the client workspace using the verified API.</li></ol><div class="code-block"><header><span>Direct tool examples</span><span>oodz</span></header><pre><code>/tool oodz_lookup {"query":"domain object persistence"}
+/tool oodz_search {"query":"save2db","path":"base"}
+/tool oodz_read {"path":"base/baseObj.tcl","start_line":60,"end_line":130}</code></pre></div><div class="code-block"><header><span>Agent task</span><span>text</span></header><pre><code>Create an NX client class using my OODZ framework. It should inherit from the appropriate base class and load client data by identifier. Inspect OODZ before writing code.</code></pre></div></section>
+        <section id="tokens"><h2>Token behavior</h2><p>The framework directory and full index are not sent automatically. Tool schemas are small and always available; only lookup results, search matches, and source ranges selected during a task enter the conversation.</p><blockquote class="notice warning"><strong>History matters.</strong> Retrieved tool results remain in the active conversation and may be sent again on follow-up requests until history trimming or <code>/new</code>.</blockquote><ul><li><code>oodz_lookup</code> returns at most 20 compact entries.</li><li><code>oodz_search</code> returns at most 100 short matches and skips <code>.git</code>, <code>tmp</code>, binaries, and files over 1 MiB.</li><li><code>oodz_read</code> returns at most 200 numbered lines from a UTF-8 file no larger than 1 MiB.</li></ul></section>
+        <section id="maintain"><h2>Maintain the index</h2><p>When the framework gains a meaningful component, add or update one entry in <code>FRAMEWORK_INDEX.json</code>. Keep summaries short, use terms developers actually ask for as keywords, preserve the exact runtime class name, and point <code>source</code> at a path relative to <code>OODZ.root</code>.</p><p>Manual summaries capture intended use better than source scanning. A later generator can refresh structural metadata such as NX classes, superclasses, methods, and properties while preserving these descriptions.</p></section>
+      </article>
+    </div>
+  </main>
+  <footer class="docs-footer"><div class="container d-flex justify-content-between"><a href="plugins.html">← Plugins</a><a href="operations.html">Next: Operations →</a></div></footer>
+</body></html>

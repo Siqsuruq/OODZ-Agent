@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="OODZ Agent documentation overview.">
+  <title>OODZ Agent · Documentation</title>
+  <link href="src/pico/pico.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top docs-navbar">
+    <div class="container">
+      <a class="navbar-brand fw-bold" href="index.html"><span class="brand-mark">O</span> OODZ Agent</a>
+      <div class="collapse navbar-collapse" id="docsNav">
+        <div class="navbar-nav ms-auto">
+          <a class="nav-link active" aria-current="page" href="index.html">Overview</a>
+          <a class="nav-link" href="getting-started.html">Getting started</a>
+          <a class="nav-link" href="architecture.html">Architecture</a>
+          <a class="nav-link" href="plugins.html">Plugins</a>
+          <a class="nav-link" href="oodz-framework.html">OODZ context</a>
+          <a class="nav-link" href="operations.html">Operations</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <div class="container py-5">
+        <div class="row align-items-center g-5 py-lg-5">
+          <div class="col-lg-7">
+            <span class="eyebrow">Local-first Tcl coding agent</span>
+            <h1 class="display-2 fw-bold lh-1 my-4">A small agent with real tools.</h1>
+            <p class="lead text-secondary">OODZ Agent connects an OpenAI-compatible model to controlled local plugins for
+              reading, searching, listing, and writing workspace files.</p>
+            <div class="d-flex flex-wrap gap-2 mt-4">
+              <a class="btn btn-zesty btn-lg" href="getting-started.html">Get started</a>
+              <a class="btn btn-outline-secondary btn-lg" href="plugins.html">Build a plugin</a>
+            </div>
+          </div>
+          <div class="col-lg-5">
+            <div class="terminal shadow-lg">
+              <div class="terminal-title">oodz_agent</div>
+              <pre><code>╭ OODZ Agent ──────────────╮
+│ Local Tcl coding agent   │
+│ Type /help for commands. │
+╰──────────────────────────╯
+<span>oodz&gt;</span> /tools
+edit_file, list_files,
+make_directory, read_file,
+search_files, write_file,
+xml_validate, ...</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="container py-5">
+      <div class="row g-4 stats">
+        <div class="col-md-4"><div class="card h-100"><div class="card-body"><strong>106/106</strong><span>offline tests passing</span></div></div></div>
+        <div class="col-md-4"><div class="card h-100"><div class="card-body"><strong>47</strong><span>bundled plugin manifests</span></div></div></div>
+        <div class="col-md-4"><div class="card h-100"><div class="card-body"><strong>JSON</strong><span>persistent conversation history</span></div></div></div>
+      </div>
+    </section>
+
+    <section class="section-muted py-5">
+      <div class="container py-4">
+        <div class="section-heading">
+          <span>Capabilities</span>
+          <h2>Useful now, designed to grow.</h2>
+        </div>
+        <div class="row g-4">
+          <div class="col-md-6 col-xl-3"><article class="card h-100"><div class="card-body"><h3>Agent loop</h3><p>The configured model can choose tools, inspect results, and continue until it produces a final answer.</p></div></article></div>
+          <div class="col-md-6 col-xl-3"><article class="card h-100"><div class="card-body"><h3>Controlled plugins</h3><p>Workspace confinement, schemas, timeouts, output limits, and explicit write approval.</p></div></article></div>
+          <div class="col-md-6 col-xl-3"><article class="card h-100"><div class="card-body"><h3>Persistent REPL</h3><p>Conversation context survives restarts and can be reset at any time with <code>/new</code>.</p></div></article></div>
+          <div class="col-md-6 col-xl-3"><article class="card h-100"><div class="card-body"><h3>Clean terminal</h3><p>Streaming answers stay in the conversation while diagnostics go to a separate log.</p></div></article></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="container py-5">
+      <div class="section-heading">
+        <span>Documentation</span>
+        <h2>Choose a topic.</h2>
+      </div>
+      <div class="list-group docs-list shadow-sm">
+        <a class="list-group-item list-group-item-action" href="getting-started.html"><strong>Getting started</strong><span>Requirements, configuration, CLI commands, and first run →</span></a>
+        <a class="list-group-item list-group-item-action" href="architecture.html"><strong>Architecture</strong><span>Agent loop, API client, storage, streaming, and project files →</span></a>
+        <a class="list-group-item list-group-item-action" href="plugins.html"><strong>Plugin development</strong><span>Manifest format, Tcl handlers, built-in tools, and safety →</span></a>
+        <a class="list-group-item list-group-item-action" href="oodz-framework.html"><strong>OODZ framework context</strong><span>Project instructions, compact lookup, source search, token use, and maintenance →</span></a>
+        <a class="list-group-item list-group-item-action" href="operations.html"><strong>Operations</strong><span>History, logging, testing, troubleshooting, and current limits →</span></a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="docs-footer"><div class="container d-flex justify-content-between"><span>OODZ Agent documentation</span><a href="getting-started.html">Next: Getting started →</a></div></footer>
+</body>
+</html>
