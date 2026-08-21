@@ -21,7 +21,7 @@
           <div class="code-block"><header><span>Separate terminal</span><span>shell</span></header><pre><code>tail -f .oodz/oodz.log</code></pre></div>
           <p>Actionable CLI errors and write approvals remain visible in the main terminal.</p></section>
         <section id="testing"><h2>Offline test suite</h2><div class="code-block"><header><span>Project verification</span><span>shell</span></header><pre><code>tclsh tests/all.tcl</code></pre></div>
-          <blockquote class="notice success"><strong>Current result:</strong> 106 passed, 0 failed, 0 skipped.</blockquote>
+          <blockquote class="notice success"><strong>Current result:</strong> 107 passed, 0 failed, 0 skipped.</blockquote>
           <p>Fake clients and transports test the agent loop, streaming, retries, JSON, plugins, safety limits, CLI behavior, persistence, and log routing without network calls or a real key.</p></section>
         <section id="troubleshooting"><h2>Troubleshooting</h2>
           <details open><summary>Empty streaming response</summary><p>The client automatically retries once without streaming. Inspect <code>/logs</code> if the buffered request also fails.</p></details>

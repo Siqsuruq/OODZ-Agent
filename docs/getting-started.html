@@ -68,6 +68,9 @@ max_output_chars = 65536
 directories =
 max_file_bytes = 65536
 
+[Executables]
+fossil = fossil
+
 [Logging]
 file = .oodz/oodz.log
 level = info
@@ -90,6 +93,7 @@ project_tests_timeout_ms = 60000</code></pre></div>
           <p><code>Workspace.instructions</code> names an optional UTF-8 instruction filename. The root file is sent with every request. Before changing nested files, <code>load_project_instructions</code> discovers matching files from the workspace root through the target directory. Closer instructions refine conventions for their subtree. Leave the setting empty to disable project instructions.</p>
           <p><code>Plugins.directories</code> accepts comma-separated absolute or installation-relative personal plugin roots. Each configured directory must already exist.</p>
           <p><code>Skills.directories</code> accepts comma-separated personal skill roots. Skill names and trigger descriptions are included in the system prompt; complete instructions are retrieved only when the model calls <code>load_skill</code>.</p>
+          <p><code>Executables.fossil</code> configures one trusted executable name or absolute path for every bundled Fossil plugin. The default <code>fossil</code> resolves through <code>PATH</code>. On Windows, a full path may be written as <code>C:/Tools/Fossil/fossil.exe</code>.</p>
           <h3>Windows</h3>
           <p>Use forward slashes for absolute INI paths, for example <code>D:/projects/client</code>. The built-in <code>skills/</code> directory is always loaded; personal skill roots may be anywhere and are added with <code>Skills.directories</code>. The CLI selects the UTF-8 console code page and uses ASCII borders for CMD and PowerShell compatibility.</p>
           <div class="code-block"><header><span>PowerShell</span><span>powershell</span></header><pre><code>Copy-Item conf\conf.example.ini conf\conf.ini

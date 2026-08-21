@@ -819,6 +819,28 @@ test process-runner-1.1 {Tcl runner builds one confined command profile} -body {
     1 "Plugin path escapes the workspace" \
     1 "Tcl runner accepts only .tcl files"]
 
+test process-runner-1.1a {configured executable alias controls plugin commands} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] executable-alias-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set configuredPath [file normalize [info nameofexecutable]]
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 direct bwrap 2500 4096 \
+        ::RunnerMock::execute [dict create fossil $configuredPath]]
+    try {
+        set result [$runner runConfiguredCommand fossil [list version]]
+        set call [lindex $::RunnerMock::calls 0]
+        list \
+            $result \
+            [expr {[lindex [lindex $call 0] 0] eq $configuredPath}] \
+            [lrange [lindex $call 0] 1 end]
+    } finally {
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list "sandboxed Tcl output" 1 [list version]]
+
 test process-runner-1.2 {Tcl execution is model-visible and approved} -body {
     set root [file normalize [file join \
         [::tcltest::temporaryDirectory] process-tool-[pid]]]

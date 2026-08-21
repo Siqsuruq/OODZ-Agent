@@ -4,11 +4,12 @@
     variable processIds watchdog terminationReason
     variable projectTestsEnabled projectTestsExecutable
     variable projectTestsArguments projectTestsTimeout
+    variable executableAliases
 
     constructor {
         configuredWorkspaceRoot configuredTclExecutable configuredBackend
         configuredSandboxExecutable configuredTimeoutMs configuredMaxOutput
-        {configuredExecutor ""}
+        {configuredExecutor ""} {configuredExecutableAliases {}}
     } {
         set workspaceRoot [file normalize $configuredWorkspaceRoot]
         if {![file isdirectory $workspaceRoot]} {
@@ -36,6 +37,10 @@
         set timeoutMs $configuredTimeoutMs
         set maxOutput $configuredMaxOutput
         set executor $configuredExecutor
+        if {[catch {dict size $configuredExecutableAliases}]} {
+            error "Executable aliases must be a dictionary"
+        }
+        set executableAliases $configuredExecutableAliases
         set channel ""
         set projectTestsEnabled 0
         set projectTestsExecutable ""
@@ -111,6 +116,11 @@
     method runConfiguredCommand {configuredExecutable arguments} {
         if {[catch {llength $arguments}]} {
             error "Configured command arguments must be a valid Tcl list"
+        }
+        set executableName [string trim $configuredExecutable]
+        if {[dict exists $executableAliases $executableName]} {
+            set configuredExecutable [dict get \
+                $executableAliases $executableName]
         }
         set executable [my resolveExecutable \
             $configuredExecutable "Plugin executable"]

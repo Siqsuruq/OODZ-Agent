@@ -87,6 +87,9 @@ project_tests_executable = tclsh9.0
 project_tests_arguments = tests/all.tcl
 project_tests_timeout_ms = 60000
 
+[Executables]
+fossil = fossil
+
 [GUI]
 theme_package = ttk::theme::Arc
 theme = Arc-Dark
@@ -137,6 +140,8 @@ Configuration fields:
 - `Skills.directories`: Optional comma-separated personal skill directories.
   The built-in `skills/` directory is always loaded first.
 - `Skills.max_file_bytes`: Maximum size of one `SKILL.md`; defaults to 65536.
+- `Executables.fossil`: Trusted executable name or absolute path shared by all
+  bundled Fossil plugins. The default resolves `fossil` through `PATH`.
 - `Runner.enabled`: Expose or remove the controlled `run_tcl_file` tool.
 - `Runner.tclsh`: Fixed Tcl interpreter executable used by the runner.
 - `Runner.backend`: `direct` for portable unsandboxed execution or
@@ -383,8 +388,16 @@ its timeout, output limit, and direct or Bubblewrap backend.
 /tool fossil_status {}
 ```
 
-The Fossil executable can be changed privately in
-`plugins/fossil_status/plugin.ini` when it is not available as `fossil`.
+Configure the Fossil executable once in the private application configuration;
+all bundled Fossil plugins resolve their logical `fossil` command through it:
+
+```ini
+[Executables]
+fossil = C:/Tools/Fossil/fossil.exe
+```
+
+Use forward slashes for Windows paths. The default value `fossil` resolves
+through `PATH`.
 
 The read-only `fossil_diff` plugin uses Fossil's internal unified diff engine,
 preventing a checkout setting from selecting an external diff program. With no
@@ -699,7 +712,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 106 Passed 106 Skipped 0 Failed 0
+all.tcl: Total 107 Passed 107 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the

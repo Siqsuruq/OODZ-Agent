@@ -599,7 +599,10 @@ proc ::oodzGui::start {} {
             [$config get Runner.backend direct] \
             [$config get Runner.sandbox bwrap] \
             [$config get Runner.timeout_ms 10000] \
-            [$config get Runner.max_output_chars 65536]]
+            [$config get Runner.max_output_chars 65536] \
+            "" \
+            [dict create fossil \
+                [$config get Executables.fossil fossil]]]
         set projectTestsEnabled \
             [$config get Runner.project_tests_enabled false]
         if {![string is boolean -strict $projectTestsEnabled]} {
