@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "framework_root": "/opt/ns/tcl/oodz",
+  "components": [
+    {"name":"::oodz::superClass","category":"core","summary":"Root OODZ NX class providing shared NaviServer location and version properties.","keywords":["nx","root","server","version","superclass"],"source":"base/1_oodz.tcl"},
+    {"name":"::oodz::baseClass","category":"core","summary":"Base NX class for dynamic object properties, dictionary loading, inspection, clearing, replacing, and serialization.","keywords":["nx","properties","add","get","clear","domain","base"],"source":"base/baseClass.tcl"},
+    {"name":"::oodz::baseObj","category":"database domain objects","summary":"Abstract table-backed domain object with identifier loading, database persistence, deletion, and automatic table-column properties.","keywords":["nx","model","domain","database","table","crud","save2db","load_data"],"source":"base/baseObj.tcl"},
+    {"name":"::SQLBuilder","category":"database SQL","summary":"Builds SELECT and COUNT SQL with columns, conditions, joins, grouping, ordering, searching, date ranges, limits, and offsets.","keywords":["sql","select","where","join","search","date range","pagination","query"],"source":"db/SelectSqlBuilder.tcl"},
+    {"name":"::InsertSQLBuilder","category":"database SQL","summary":"Builds INSERT SQL for multiple rows with RETURNING, column transforms, and conflict handling.","keywords":["sql","insert","rows","returning","conflict","upsert"],"source":"db/InsertSqlBuilder.tcl"},
+    {"name":"::UpdateSQLBuilder","category":"database SQL","summary":"Builds UPDATE SQL with value dictionaries, conditions, and optional column transformations.","keywords":["sql","update","where","set","transform"],"source":"db/UpdateSqlBuilder.tcl"},
+    {"name":"::DeleteSQLBuilder","category":"database SQL","summary":"Builds DELETE SQL with conditions, joins, limits, and offsets.","keywords":["sql","delete","where","join","limit"],"source":"db/DeleteSqlBuilder.tcl"},
+    {"name":"::oodz::db","category":"database access","summary":"OODZ PostgreSQL and NaviServer database helper class for pooled execution and common data operations.","keywords":["postgresql","naviserver","database","pool","query","columns"],"source":"db/1_pgdb.tcl"},
+    {"name":"::oodz::dateTime","category":"date and time","summary":"Configuration-aware date, time, timestamp, timezone, formatting, comparison, and range helper.","keywords":["date","time","timestamp","timezone","format","range","calendar"],"source":"dateTime/DateTimeClass.tcl"},
+    {"name":"::oodz::Json","category":"JSON","summary":"Base JSON helper for identifying JSON arrays and objects and determining JSON value shape.","keywords":["json","object","array","type","parse"],"source":"helpers/Json.tcl"},
+    {"name":"::oodz::JsonObj / ::oodz::JsonArr","category":"JSON","summary":"OODZ JSON object and array classes built on the common Json helper.","keywords":["json","encode","object","array","builder"],"source":"helpers/JsonObj.tcl; helpers/JsonArr.tcl"},
+    {"name":"::oodz::fileStorage","category":"file storage","summary":"Table-backed file storage object for MIME handling, filesystem persistence, and database metadata.","keywords":["file","upload","storage","mime","database","metadata"],"source":"fileStorage/fileStorage.tcl"},
+    {"name":"::httpClientClass","category":"HTTP client","summary":"NaviServer HTTP client supporting GET, POST, PUT, DELETE, headers, request bodies, query parameters, and JSON responses.","keywords":["http","api","client","get","post","put","delete","ns_http"],"source":"rest/httpClientClass.tcl"},
+    {"name":"::oodz::api / ::apiin","category":"REST API","summary":"REST endpoint dispatch and incoming request handling for methods, headers, JSON, forms, text, binary bodies, and responses.","keywords":["rest","api","request","response","dispatcher","json","form","endpoint"],"source":"rest/2_api.tcl; rest/1_rest.tcl"},
+    {"name":"::oodz::htmlWrapper","category":"user interface","summary":"Server-side HTML and form rendering wrapper with translation, input, button, conditional rendering, and database-table helpers.","keywords":["html","form","render","input","button","translation","ui"],"source":"ui/1_htmlWrapper.tcl"},
+    {"name":"::oodz::SessionFactory","category":"session","summary":"Creates OODZ session implementations backed by files or databases.","keywords":["session","cookie","file","database","factory"],"source":"session/base_classes.tcl"},
+    {"name":"::oodz::Crypto / ::oodz::Sanitize","category":"security helpers","summary":"Shared cryptography and input-sanitization helper objects.","keywords":["crypto","security","sanitize","input","validation"],"source":"crypto/1_Crypto.tcl; crypto/2_Sanitize.tcl"}
+  ]
+}
