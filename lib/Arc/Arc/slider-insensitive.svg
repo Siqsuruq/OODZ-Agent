@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" version="1.1">
+    <g transform="translate(-259 27.638)">
+        <g transform="translate(4 -283.64)">
+            <circle cx="262.5" cy="263.5" r="7" fill="#f9fafb" stroke="#f9fafb"/>
+            <circle cx="262.5" cy="263.5" r="7" fill="#fff" opacity=".55" stroke="#cbd2e3"/>
+        </g>
+    </g>
+</svg>

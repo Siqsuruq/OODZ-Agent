@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="16" height="16" version="1.1">
+    <defs/>
+    <g transform="translate(-314 265.64)">
+        <g transform="translate(198 -266)">
+            <g transform="translate(19.004)">
+                <g transform="matrix(.93617 0 0 .93566 -96.783 -244.76)">
+                    <rect x="206.99" y="261.98" width="17.091" height="17.1" color="#000000" fill="none"/>
+                    <g transform="matrix(.50892 0 0 .5174 181.79 197.56)">
+                        <rect x="51.611" y="126.56" width="29.385" height="28.919" rx="14.692" ry="14.46" color="#000000" fill="#5294e2" stroke-width="0"/>
+                    </g>
+                </g>
+            </g>
+            <rect x="122" y="6.3622" width="4" height="4" rx="1.9989" ry="2" color="#000000" fill="#2b303b"/>
+        </g>
+    </g>
+</svg>

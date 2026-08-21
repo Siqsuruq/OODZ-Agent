@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="26" height="24" version="1.1">
+    <defs/>
+    <g transform="translate(-131 217.64)">
+        <rect x="131" y="-217.64" width="26" height="24" fill-opacity="0"/>
+        <rect x="132" y="-216.64" width="24" height="22" rx="2.5" ry="2.5" fill="#383c45"/>
+        <rect x="131.5" y="-217.14" width="25" height="23" rx="3" ry="3" fill="#3e4350" stroke="#5294e2"/>
+    </g>
+</svg>

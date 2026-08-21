@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="21" height="24" version="1.1">
+    <defs>
+        <clipPath id="c">
+            <rect x="70" y="-3.6378" width="21" height="26" rx="0" ry="0" fill="#ff1616" opacity=".64"/>
+        </clipPath>
+        <clipPath id="b">
+            <rect x="70" y="-3.6378" width="21" height="26" rx="0" ry="0" fill="#ff1616" opacity=".64"/>
+        </clipPath>
+        <clipPath id="a">
+            <rect x="70" y="-3.6378" width="21" height="26" rx="0" ry="0" fill="#ff1616" opacity=".64"/>
+        </clipPath>
+    </defs>
+    <g transform="translate(-70 2.6378)">
+        <rect x="67" y="-1.6378" width="22" height="22" rx="1" ry="1" clip-path="url(#a)" fill="#505666"/>
+        <rect x="66.5" y="-2.1378" width="23" height="23" rx="2" ry="2" clip-path="url(#b)" fill="none" stroke="#2b2e39"/>
+        <rect x="65" y="-2.6378" width="26" height="24" clip-path="url(#c)" fill="none" opacity=".133"/>
+    </g>
+</svg>

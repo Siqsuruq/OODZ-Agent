@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="21" height="24" version="1.1">
+    <defs>
+        <clipPath id="a">
+            <rect x="2" y="-280.64" width="21" height="26" rx="0" ry="0" fill="#ff1616" opacity=".64"/>
+        </clipPath>
+    </defs>
+    <g transform="translate(-125 49.638)">
+        <g transform="matrix(-1,0,0,1,130,140)">
+            <g transform="translate(-18 90)" clip-path="url(#a)">
+                <rect x="-1" y="-278.64" width="22" height="22" rx="1" ry="1" fill="#fdfdfd"/>
+                <rect x="-1.5" y="-279.14" width="23" height="23" rx="2" ry="2" fill="none" stroke="#cfd6e6"/>
+                <rect x="-3" y="-279.64" width="26" height="24" fill="none" opacity=".133"/>
+            </g>
+        </g>
+        <rect x="145" y="-48.638" width="1" height="22" fill="#cfd6e6" stroke-width="0"/>
+    </g>
+</svg>

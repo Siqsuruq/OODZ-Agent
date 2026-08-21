@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="10" height="12" version="1.1">
+    <defs>
+        <clipPath id="a">
+            <rect x="-4" y="26.362" width="10" height="13" fill="#66a1dc" opacity=".579"/>
+        </clipPath>
+        <clipPath id="b">
+            <rect x="-4" y="26.362" width="10" height="13" fill="#66a1dc" opacity=".579"/>
+        </clipPath>
+        <clipPath id="c">
+            <rect x="-4" y="26.362" width="10" height="13" fill="#66a1dc" opacity=".579"/>
+        </clipPath>
+    </defs>
+    <g transform="translate(-12 -26.362)">
+        <g transform="matrix(1 0 0 -1 16 64.724)">
+            <rect x="-20" y="13.362" width="26" height="25" clip-path="url(#a)" fill="none"/>
+            <rect x="-18" y="15.362" width="22" height="22" rx="1" ry="1" clip-path="url(#b)" fill="#2e3340"/>
+            <rect x="-18.5" y="14.862" width="23" height="23" rx="2" ry="2" clip-path="url(#c)" fill="#2e3340" stroke="#282b36"/>
+        </g>
+    </g>
+</svg>

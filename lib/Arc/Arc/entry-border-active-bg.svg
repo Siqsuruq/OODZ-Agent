@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="28" height="26" version="1.1">
+    <defs/>
+    <g transform="translate(-29 248.64)">
+        <g transform="translate(-1 32)">
+            <path d="m30-280.64v26h28v-26h-27zm2 2h24v22h-24z" fill="#f5f6f7"/>
+            <path transform="translate(-113 -345.64)" d="m144 66v24h26v-24zm3.5 1h19c1.385 0 2.5 1.115 2.5 2.5v17c0 1.385-1.115 2.5-2.5 2.5h-19c-1.385 0-2.5-1.115-2.5-2.5v-17c0-1.385 1.115-2.5 2.5-2.5z" fill="#f5f6f7"/>
+            <rect x="31.5" y="-279.14" width="25" height="23" rx="3" ry="3" fill="none" stroke="#5294e2"/>
+        </g>
+    </g>
+</svg>

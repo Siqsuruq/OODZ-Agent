@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="21" height="24" version="1.1">
+    <defs>
+        <clipPath id="d">
+            <rect transform="scale(-1,1)" x="-52" y="-280.64" width="21" height="26" fill="#f11" opacity=".558"/>
+        </clipPath>
+    </defs>
+    <g transform="translate(-21 110.64)">
+        <g transform="translate(-10,169)" clip-path="url(#d)">
+            <rect x="31" y="-279.64" width="26" height="24" rx="0" ry="0" fill="#f5f6f7"/>
+            <rect x="32" y="-278.64" width="23" height="22" rx="1" ry="1" fill="#fff"/>
+            <rect x="31.5" y="-279.14" width="24" height="23" rx="3" ry="3" fill="none" stroke="#5294e2"/>
+            <rect x="51" y="-278.64" width="1" height="22" fill="#5294e2"/>
+        </g>
+    </g>
+</svg>
