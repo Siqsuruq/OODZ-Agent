@@ -7,18 +7,9 @@ package require json::write
     variable streamBuffer streamEventData streamBody
 
     method post {url payload headers timeout} {
-        set token [::http::geturl $url \
-            -query [encoding convertto utf-8 $payload] \
-            -type "application/json" \
-            -headers $headers \
-            -timeout $timeout]
-
+        set token [::http::geturl $url -query [encoding convertto utf-8 $payload] -type "application/json" -headers $headers -timeout $timeout]
         try {
-            return [dict create \
-                status [::http::status $token] \
-                code [::http::ncode $token] \
-                body [encoding convertfrom utf-8 [::http::data $token]] \
-                error [::http::error $token]]
+            return [dict create status [::http::status $token] code [::http::ncode $token] body [encoding convertfrom utf-8 [::http::data $token]] error [::http::error $token]]
         } finally {
             ::http::cleanup $token
         }
@@ -32,23 +23,13 @@ package require json::write
         set streamBuffer ""
         set streamEventData {}
         set streamBody ""
-        set token [::http::geturl $url \
-            -query [encoding convertto utf-8 $payload] \
-            -type "application/json" \
-            -headers $headers \
-            -timeout $timeout \
-            -handler [list [self] receiveStream $eventCallback]]
-
+        set token [::http::geturl $url -query [encoding convertto utf-8 $payload] -type "application/json" -headers $headers -timeout $timeout -handler [list [self] receiveStream $eventCallback]]
         try {
             set body [encoding convertfrom utf-8 $streamBody]
             if {$body eq "" && [::http::data $token] ne ""} {
                 set body [::http::data $token]
             }
-            return [dict create \
-                status [::http::status $token] \
-                code [::http::ncode $token] \
-                body $body \
-                error [::http::error $token]]
+            return [dict create status [::http::status $token] code [::http::ncode $token] body $body error [::http::error $token]]
         } finally {
             ::http::cleanup $token
         }
@@ -95,8 +76,7 @@ package require json::write
         set provider [$configObj get "LLM.provider" "deepseek"]
         set apiKey [$configObj get "LLM.api_key"]
         set modelName [$configObj get "LLM.model" "deepseek-v4-flash"]
-        set modelUrl  [$configObj get "LLM.url" \
-            "https://api.deepseek.com/chat/completions"]
+        set modelUrl  [$configObj get "LLM.url" "https://api.deepseek.com/chat/completions"]
         set timeout   [$configObj get "LLM.timeout" "30000"]
         set maxRetries [$configObj get "LLM.max_retries" "2"]
         set retryDelay [$configObj get "LLM.retry_delay_ms" "250"]
@@ -137,15 +117,7 @@ package require json::write
         }
 
         # Register TLS for HTTPS requests
-        ::http::register https 443 [list \
-            ::tls::socket \
-            -autoservername 1 \
-            -ssl2 0 \
-            -ssl3 0 \
-            -tls1 0 \
-            -tls1.1 0 \
-            -tls1.2 1 \
-            -tls1.3 1]
+        ::http::register https 443 [list ::tls::socket -autoservername 1 -ssl2 0 -ssl3 0 -tls1 0 -tls1.1 0 -tls1.2 1 -tls1.3 1]
         $log log info "LLM Client initialized with model: $modelName"
     }
 
@@ -172,15 +144,10 @@ package require json::write
 
         for {set attempt 1} {$attempt <= $maxAttempts} {incr attempt} {
             if {[catch {
-                $transport post \
-                    $modelUrl \
-                    $payload \
-                    [my requestHeaders] \
-                    $timeout
+                $transport post $modelUrl $payload [my requestHeaders] $timeout
             } response transportOptions]} {
                 if {$attempt < $maxAttempts} {
-                    $log log warn \
-                        "Transport failure; retrying ($attempt/$maxAttempts)"
+                    $log log warn "Transport failure; retrying ($attempt/$maxAttempts)"
                     my waitBeforeRetry $attempt
                     continue
                 }
@@ -193,8 +160,7 @@ package require json::write
 
             if {[my isRetryableResponse $status $code]
                     && $attempt < $maxAttempts} {
-                $log log warn \
-                    "Transient API response HTTP $code; retrying ($attempt/$maxAttempts)"
+                $log log warn "Transient API response HTTP $code; retrying ($attempt/$maxAttempts)"
                 my waitBeforeRetry $attempt
                 continue
             }
@@ -219,15 +185,9 @@ package require json::write
         set streamingToolCalls [dict create]
 
         if {[catch {
-            $transport postStream \
-                $modelUrl \
-                $payload \
-                [my requestHeaders] \
-                $timeout \
-                [list [self] consumeStreamEvent $contentCallback]
+            $transport postStream $modelUrl $payload [my requestHeaders] $timeout [list [self] consumeStreamEvent $contentCallback]
         } response]} {
-            $log log warn \
-                "Streaming transport exception; retrying without streaming"
+            $log log warn "Streaming transport exception; retrying without streaming"
             set fallbackMessage [my queryMessage $systemPrompt $messages $tools]
             if {[dict exists $fallbackMessage content]
                     && [dict get $fallbackMessage content] ne ""} {
@@ -240,14 +200,10 @@ package require json::write
         set body [dict get $response body]
 
         if {$status ne "ok" || $code < 200 || $code >= 300} {
-            if {[string trim [dict get $streamingMessage content]] eq ""
-                    && [dict size $streamingToolCalls] == 0} {
-                $log log warn \
-                    "Streaming request failed ($status, HTTP $code); retrying without streaming"
-                set fallbackMessage \
-                    [my queryMessage $systemPrompt $messages $tools]
-                if {[dict exists $fallbackMessage content]
-                        && [dict get $fallbackMessage content] ne ""} {
+            if {[string trim [dict get $streamingMessage content]] eq "" && [dict size $streamingToolCalls] == 0} {
+                $log log warn "Streaming request failed ($status, HTTP $code); retrying without streaming"
+                set fallbackMessage [my queryMessage $systemPrompt $messages $tools]
+                if {[dict exists $fallbackMessage content] && [dict get $fallbackMessage content] ne ""} {
                     {*}$contentCallback [dict get $fallbackMessage content]
                 }
                 return $fallbackMessage
@@ -278,14 +234,10 @@ package require json::write
             }
             dict set streamingMessage tool_calls $calls
         }
-        if {[string trim [dict get $streamingMessage content]] eq ""
-                && ![dict exists $streamingMessage tool_calls]} {
-            $log log warn \
-                "Streaming response was empty; retrying without streaming"
-            set fallbackMessage \
-                [my queryMessage $systemPrompt $messages $tools]
-            if {[dict exists $fallbackMessage content]
-                    && [dict get $fallbackMessage content] ne ""} {
+        if {[string trim [dict get $streamingMessage content]] eq "" && ![dict exists $streamingMessage tool_calls]} {
+            $log log warn "Streaming response was empty; retrying without streaming"
+            set fallbackMessage [my queryMessage $systemPrompt $messages $tools]
+            if {[dict exists $fallbackMessage content] && [dict get $fallbackMessage content] ne ""} {
                 {*}$contentCallback [dict get $fallbackMessage content]
             }
             return $fallbackMessage
@@ -294,9 +246,7 @@ package require json::write
     }
 
     method consumeStreamEvent {contentCallback data} {
-        if {[catch {::json::json2dict $data} event]
-                || ![dict exists $event choices]
-                || [llength [dict get $event choices]] == 0} {
+        if {[catch {::json::json2dict $data} event] || ![dict exists $event choices] || [llength [dict get $event choices]] == 0} {
             return
         }
         set choice [lindex [dict get $event choices] 0]
@@ -306,8 +256,7 @@ package require json::write
         set delta [dict get $choice delta]
 
         foreach field {content reasoning_content} {
-            if {[dict exists $delta $field]
-                    && [dict get $delta $field] ne "null"} {
+            if {[dict exists $delta $field] && [dict get $delta $field] ne "null"} {
                 set fragment [dict get $delta $field]
                 if {![dict exists $streamingMessage $field]} {
                     dict set streamingMessage $field ""
@@ -323,9 +272,7 @@ package require json::write
             foreach callDelta [dict get $delta tool_calls] {
                 set index [dict get $callDelta index]
                 if {![dict exists $streamingToolCalls $index]} {
-                    dict set streamingToolCalls $index [dict create \
-                        id "" type "" \
-                        function [dict create name "" arguments ""]]
+                    dict set streamingToolCalls $index [dict create id "" type "" function [dict create name "" arguments ""]]
                 }
                 set call [dict get $streamingToolCalls $index]
                 foreach field {id type} {
@@ -338,8 +285,7 @@ package require json::write
                     set function [dict get $call function]
                     foreach field {name arguments} {
                         if {[dict exists $functionDelta $field]} {
-                            dict append function $field \
-                                [dict get $functionDelta $field]
+                            dict append function $field [dict get $functionDelta $field]
                         }
                     }
                     dict set call function $function
@@ -360,14 +306,12 @@ package require json::write
             set role [dict get $message role]
             set fields [list "#$index" $role]
             if {[dict exists $message content]} {
-                lappend fields "content=[string length \
-                    [dict get $message content]]"
+                lappend fields "content=[string length [dict get $message content]]"
             } else {
                 lappend fields "content=missing"
             }
             if {[dict exists $message reasoning_content]} {
-                lappend fields "reasoning=[string length \
-                    [dict get $message reasoning_content]]"
+                lappend fields "reasoning=[string length [dict get $message reasoning_content]]"
             } elseif {$role eq "assistant"} {
                 lappend fields "reasoning=missing"
             }
@@ -406,20 +350,15 @@ package require json::write
     }
 
     method buildPayload {systemPrompt messages {tools {}} {stream 0}} {
-        set encodedMessages [list [my encodeMessage \
-            [dict create role system content $systemPrompt]]]
+        set encodedMessages [list [my encodeMessage [dict create role system content $systemPrompt]]]
 
         foreach message $messages {
             lappend encodedMessages [my encodeMessage $message]
         }
 
-        set fields [list \
-            model [::json::write string $modelName] \
-            messages [::json::write array {*}$encodedMessages]]
+        set fields [list model [::json::write string $modelName] messages [::json::write array {*}$encodedMessages]]
         if {$provider eq "deepseek"} {
-            lappend fields thinking [::json::write object \
-                type [::json::write string \
-                    [expr {$thinkingEnabled ? "enabled" : "disabled"}]]]
+            lappend fields thinking [::json::write object type [::json::write string [expr {$thinkingEnabled ? "enabled" : "disabled"}]]]
         }
 
         if {[llength $tools] > 0} {
@@ -430,13 +369,7 @@ package require json::write
                         error "Invalid tool definition: missing $key"
                     }
                 }
-                lappend encodedTools [::json::write object \
-                    type [::json::write string "function"] \
-                    function [::json::write object \
-                        name [::json::write string [dict get $tool name]] \
-                        description [::json::write string \
-                            [dict get $tool description]] \
-                        parameters [dict get $tool parameters_json]]]
+                lappend encodedTools [::json::write object type [::json::write string "function"] function [::json::write object name [::json::write string [dict get $tool name]] description [::json::write string [dict get $tool description]] parameters [dict get $tool parameters_json]]]
             }
             lappend fields tools [::json::write array {*}$encodedTools]
             # DeepSeek V4 Flash can reject follow-up messages containing
@@ -472,17 +405,14 @@ package require json::write
         # tool-call messages. Preserve an empty string instead of JSON null.
         lappend fields content [::json::write string $content]
 
-        if {$provider eq "deepseek"
-                && [dict exists $message reasoning_content]} {
-            lappend fields reasoning_content [::json::write string \
-                [dict get $message reasoning_content]]
+        if {$provider eq "deepseek" && [dict exists $message reasoning_content]} {
+            lappend fields reasoning_content [::json::write string [dict get $message reasoning_content]]
         }
         if {[dict exists $message tool_call_id]} {
             if {$role ne "tool"} {
                 error "tool_call_id is only valid for tool messages"
             }
-            lappend fields tool_call_id [::json::write string \
-                [dict get $message tool_call_id]]
+            lappend fields tool_call_id [::json::write string [dict get $message tool_call_id]]
         } elseif {$role eq "tool"} {
             error "Tool messages require tool_call_id"
         }
@@ -500,13 +430,7 @@ package require json::write
                     }
                 }
                 set function [dict get $call function]
-                lappend encodedCalls [::json::write object \
-                    id [::json::write string [dict get $call id]] \
-                    type [::json::write string [dict get $call type]] \
-                    function [::json::write object \
-                        name [::json::write string [dict get $function name]] \
-                        arguments [::json::write string \
-                            [dict get $function arguments]]]]
+                lappend encodedCalls [::json::write object id [::json::write string [dict get $call id]] type [::json::write string [dict get $call type]] function [::json::write object name [::json::write string [dict get $function name]] arguments [::json::write string [dict get $function arguments]]]]
             }
             lappend fields tool_calls [::json::write array {*}$encodedCalls]
         }
@@ -527,17 +451,12 @@ package require json::write
             return -code error "Parsing Error: invalid JSON response"
         }
 
-        if {![dict exists $response choices]
-                || [llength [dict get $response choices]] == 0
-                || ![dict exists \
-                    [lindex [dict get $response choices] 0] message]} {
+        if {![dict exists $response choices] || [llength [dict get $response choices]] == 0 || ![dict exists [lindex [dict get $response choices] 0] message]} {
             return -code error "Parsing Error: response has no assistant message"
         }
 
-        set rawMessage [dict get \
-            [lindex [dict get $response choices] 0] message]
-        if {![dict exists $rawMessage role]
-                || [dict get $rawMessage role] ne "assistant"} {
+        set rawMessage [dict get [lindex [dict get $response choices] 0] message]
+        if {![dict exists $rawMessage role] || [dict get $rawMessage role] ne "assistant"} {
             return -code error "Parsing Error: invalid assistant message"
         }
 
@@ -554,16 +473,14 @@ package require json::write
                 dict set message $field [dict get $rawMessage $field]
             }
         }
-        if {![dict exists $message content]
-                && ![dict exists $message tool_calls]} {
+        if {![dict exists $message content] && ![dict exists $message tool_calls]} {
             return -code error "Parsing Error: response has no message content"
         }
         return $message
     }
 
     method parseErrorResponse {body} {
-        if {![catch {::json::json2dict $body} response]
-                && [dict exists $response error message]} {
+        if {![catch {::json::json2dict $body} response] && [dict exists $response error message]} {
             return [dict get $response error message]
         }
         return "request failed"

@@ -21,9 +21,7 @@
                 error "Workspace.instructions must be a filename for hierarchical loading"
             }
         }
-        foreach {value label} [list \
-                $configuredMaxFileBytes "Instruction file size limit" \
-                $configuredMaxTotalBytes "Instruction total size limit"] {
+        foreach {value label} [list $configuredMaxFileBytes "Instruction file size limit" $configuredMaxTotalBytes "Instruction total size limit"] {
             if {![string is entier -strict $value] || $value <= 0} {
                 error "$label must be a positive integer"
             }
@@ -54,8 +52,7 @@
         }
 
         set directories {}
-        set relativeDirectory [string range $targetDirectory \
-            [expr {[string length $workspaceRoot] + 1}] end]
+        set relativeDirectory [string range $targetDirectory [expr {[string length $workspaceRoot] + 1}] end]
         if {$targetDirectory ne $workspaceRoot} {
             set current $workspaceRoot
             foreach component [file split $relativeDirectory] {

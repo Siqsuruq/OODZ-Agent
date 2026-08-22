@@ -24,13 +24,7 @@ package require json::write
             }
         }
 
-        return [::json::write object \
-            id [::json::write string [dict get $call id]] \
-            type [::json::write string [dict get $call type]] \
-            function [::json::write object \
-                name [::json::write string [dict get $function name]] \
-                arguments [::json::write string \
-                    [dict get $function arguments]]]]
+        return [::json::write object id [::json::write string [dict get $call id]] type [::json::write string [dict get $call type]] function [::json::write object name [::json::write string [dict get $function name]] arguments [::json::write string [dict get $function arguments]]]]
     }
 
     method encodeMessage {message} {
@@ -45,8 +39,7 @@ package require json::write
         set fields [list role [::json::write string $role]]
         foreach field {content reasoning_content tool_call_id} {
             if {[dict exists $message $field]} {
-                lappend fields $field \
-                    [::json::write string [dict get $message $field]]
+                lappend fields $field [::json::write string [dict get $message $field]]
             }
         }
         if {[dict exists $message tool_calls]} {
@@ -77,25 +70,18 @@ package require json::write
     }
 
     method save {messages {summary ""} {summarizedMessages 0}} {
-        if {![string is entier -strict $summarizedMessages]
-                || $summarizedMessages < 0
-                || $summarizedMessages > [llength $messages]} {
+        if {![string is entier -strict $summarizedMessages] || $summarizedMessages < 0 || $summarizedMessages > [llength $messages]} {
             error "Invalid summarized message count"
         }
         set encodedMessages {}
         foreach message $messages {
             lappend encodedMessages [my encodeMessage $message]
         }
-        set document [::json::write object \
-            version 1 \
-            summary [::json::write string $summary] \
-            summarized_messages $summarizedMessages \
-            messages [::json::write array {*}$encodedMessages]]
+        set document [::json::write object version 1 summary [::json::write string $summary] summarized_messages $summarizedMessages messages [::json::write array {*}$encodedMessages]]
 
         set parent [file dirname $historyPath]
         file mkdir $parent
-        set channel [file tempfile temporaryPath \
-            [file join $parent .oodz-history-XXXXXX]]
+        set channel [file tempfile temporaryPath [file join $parent .oodz-history-XXXXXX]]
         try {
             fconfigure $channel -encoding utf-8 -translation lf
             puts -nonewline $channel $document
@@ -120,8 +106,7 @@ package require json::write
 
     method loadState {} {
         if {![file exists $historyPath]} {
-            return [dict create \
-                messages {} summary "" summarized_messages 0]
+            return [dict create messages {} summary "" summarized_messages 0]
         }
         set channel [open $historyPath r]
         try {
@@ -130,8 +115,7 @@ package require json::write
         } finally {
             close $channel
         }
-        if {![dict exists $document version]
-                || [dict get $document version] != 1} {
+        if {![dict exists $document version] || [dict get $document version] != 1} {
             error "Unsupported conversation history version"
         }
         if {![dict exists $document messages]} {
@@ -142,17 +126,12 @@ package require json::write
         foreach message [dict get $document messages] {
             lappend messages [my validateMessage $message]
         }
-        set summary [expr {[dict exists $document summary]
-            ? [dict get $document summary] : ""}]
-        set summarizedMessages [expr {[dict exists $document summarized_messages]
-            ? [dict get $document summarized_messages] : 0}]
-        if {![string is entier -strict $summarizedMessages]
-                || $summarizedMessages < 0
-                || $summarizedMessages > [llength $messages]} {
+        set summary [expr {[dict exists $document summary] ? [dict get $document summary] : ""}]
+        set summarizedMessages [expr {[dict exists $document summarized_messages] ? [dict get $document summarized_messages] : 0}]
+        if {![string is entier -strict $summarizedMessages] || $summarizedMessages < 0 || $summarizedMessages > [llength $messages]} {
             error "Invalid summarized message count"
         }
-        return [dict create messages $messages summary $summary \
-            summarized_messages $summarizedMessages]
+        return [dict create messages $messages summary $summary summarized_messages $summarizedMessages]
     }
 
     method saveState {state} {
@@ -161,8 +140,7 @@ package require json::write
                 error "Conversation state is missing '$field'"
             }
         }
-        my save [dict get $state messages] [dict get $state summary] \
-            [dict get $state summarized_messages]
+        my save [dict get $state messages] [dict get $state summary] [dict get $state summarized_messages]
     }
 
     method clear {} {
