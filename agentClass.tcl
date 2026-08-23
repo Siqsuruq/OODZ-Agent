@@ -75,28 +75,19 @@
 
         for {set iteration 1} {$iteration <= $maxIterations} {incr iteration} {
             set activeMessages [dict get [my messageWindow $messages] included]
-            if {$streamCallback ne ""
-                    && "queryMessageStream" in \
-                        [info object methods $llmClient -all]} {
-                set assistantMessage [$llmClient queryMessageStream \
-                    $systemRole $activeMessages $tools $streamCallback]
+            if {$streamCallback ne "" && "queryMessageStream" in [info object methods $llmClient -all]} {
+                set assistantMessage [$llmClient queryMessageStream $systemRole $activeMessages $tools $streamCallback]
                 {*}$streamCallback "\n"
             } else {
-                set assistantMessage [$llmClient queryMessage \
-                    $systemRole $activeMessages $tools]
+                set assistantMessage [$llmClient queryMessage $systemRole $activeMessages $tools]
             }
 
-            if {![dict exists $assistantMessage tool_calls]
-                    || [llength [dict get $assistantMessage tool_calls]] == 0} {
+            if {![dict exists $assistantMessage tool_calls] || [llength [dict get $assistantMessage tool_calls]] == 0} {
                 lappend messages $assistantMessage
-                if {![dict exists $assistantMessage content]
-                        || [string trim \
-                            [dict get $assistantMessage content]] eq ""} {
+                if {![dict exists $assistantMessage content] || [string trim [dict get $assistantMessage content]] eq ""} {
                     error "Agent returned neither tool calls nor final content"
                 }
-                return [dict create \
-                    content [dict get $assistantMessage content] \
-                    messages $messages]
+                return [dict create content [dict get $assistantMessage content] messages $messages]
             }
 
             lappend messages $assistantMessage
@@ -113,10 +104,7 @@
                     set toolResult "Plugin error: $toolResult"
                     $log log warn "Plugin failed: $toolName: $toolResult"
                 }
-                lappend messages [dict create \
-                    role tool \
-                    content $toolResult \
-                    tool_call_id $callId]
+                lappend messages [dict create role tool content $toolResult tool_call_id $callId]
             }
         }
 
@@ -140,9 +128,7 @@
         set turns {}
         set currentTurn {}
         foreach message $sourceMessages {
-            if {[dict exists $message role]
-                    && [dict get $message role] eq "user"
-                    && [llength $currentTurn] > 0} {
+            if {[dict exists $message role] && [dict get $message role] eq "user" && [llength $currentTurn] > 0} {
                 lappend turns $currentTurn
                 set currentTurn {}
             }
@@ -154,12 +140,10 @@
 
         set selected {}
         set selectedCount 0
-        for {set index [expr {[llength $turns] - 1}]} \
-                {$index >= 0} {incr index -1} {
+        for {set index [expr {[llength $turns] - 1}]} {$index >= 0} {incr index -1} {
             set turn [lindex $turns $index]
             set turnSize [llength $turn]
-            if {$selectedCount > 0
-                    && $selectedCount + $turnSize > $maxHistoryMessages} {
+            if {$selectedCount > 0 && $selectedCount + $turnSize > $maxHistoryMessages} {
                 break
             }
             set selected [concat $turn $selected]
@@ -168,10 +152,8 @@
                 break
             }
         }
-        set excludedCount \
-            [expr {[llength $sourceMessages] - [llength $selected]}]
-        return [dict create included $selected \
-            excluded [lrange $sourceMessages 0 [expr {$excludedCount - 1}]]]
+        set excludedCount [expr {[llength $sourceMessages] - [llength $selected]}]
+        return [dict create included $selected excluded [lrange $sourceMessages 0 [expr {$excludedCount - 1}]]]
     }
 
     method getExcludedHistory {} {
@@ -191,8 +173,7 @@
         }
         set count [dict get $state summarized_messages]
         set messages [dict get $state messages]
-        if {![string is entier -strict $count]
-                || $count < 0 || $count > [llength $messages]} {
+        if {![string is entier -strict $count] || $count < 0 || $count > [llength $messages]} {
             error "Invalid summarized message count"
         }
         set memory $messages
@@ -202,8 +183,7 @@
     }
 
     method getHistoryState {} {
-        return [dict create messages $memory summary $historySummary \
-            summarized_messages $summarizedMessageCount]
+        return [dict create messages $memory summary $historySummary summarized_messages $summarizedMessageCount]
     }
 
     method summarizesHistory {} {

@@ -1,4 +1,5 @@
 #!/usr/bin/env tclsh
+const version 1.0.0
 set scriptDir [file dirname [file normalize [info script]]]
 lappend auto_path [file join $scriptDir lib]
 
@@ -10,9 +11,7 @@ package require tls
 package require fileutil
 package require zesty
 
-set ::tclReadlineAvailable [expr {
-    ![catch {package require tclreadline 2.4}]
-}]
+set ::tclReadlineAvailable [expr {![catch {package require tclreadline 2.4}]}]
 
 source [file join $scriptDir clientClass.tcl]
 source [file join $scriptDir agentClass.tcl]
@@ -85,8 +84,7 @@ proc ::resolveWorkspaceRoot {scriptDir configuredRoot} {
     if {[file pathtype $configuredRoot] eq "absolute"} {
         set workspaceRoot [file normalize $configuredRoot]
     } else {
-        set workspaceRoot [file normalize \
-            [file join $scriptDir $configuredRoot]]
+        set workspaceRoot [file normalize [file join $scriptDir $configuredRoot]]
     }
     if {![file isdirectory $workspaceRoot]} {
         error "Workspace.root is not a directory: $configuredRoot"
@@ -104,8 +102,7 @@ proc ::resolvePluginDirectories {scriptDir configuredDirectories} {
         if {[file pathtype $configuredDirectory] eq "absolute"} {
             set directory [file normalize $configuredDirectory]
         } else {
-            set directory [file normalize \
-                [file join $scriptDir $configuredDirectory]]
+            set directory [file normalize [file join $scriptDir $configuredDirectory]]
         }
         if {![file isdirectory $directory]} {
             error "Plugin directory does not exist: $configuredDirectory"
@@ -127,8 +124,7 @@ proc ::resolveSkillDirectories {scriptDir configuredDirectories} {
         if {[file pathtype $configuredDirectory] eq "absolute"} {
             set directory [file normalize $configuredDirectory]
         } else {
-            set directory [file normalize \
-                [file join $scriptDir $configuredDirectory]]
+            set directory [file normalize [file join $scriptDir $configuredDirectory]]
         }
         if {![file isdirectory $directory]} {
             error "Skill directory does not exist: $configuredDirectory"
@@ -198,6 +194,28 @@ proc ::terminalStyleEnabled {channel} {
     if {[info exists ::env(NO_COLOR)]} {
         return 0
     }
+	
+	if {$::tcl_platform(platform) eq "windows"} {
+        # Windows: Use TWAPI to check if channel is a real console. Try to load twapi if not already loaded
+        if {[catch {package require twapi}] == 0} {
+            # Check if channel is redirected, get_tcl_channel_handle succeeds for real consoles, fails for redirects
+            if {[catch {twapi::get_tcl_channel_handle $channel write}]} {
+                # Failed = redirected (file/pipe) = no colors
+                return 0
+            } else {
+                # Succeeded = real console = colors supported
+                return 1
+            }
+        } else {
+            # twapi not available - fallback to environment detection
+            if {[info exists ::env(WT_SESSION)] || [info exists ::env(ConEmuPID)]} {
+                return 1
+            }
+            # Default assumption for Windows
+            return 1
+        }
+    }
+	
     # Tcl exposes terminal-only channel options such as -mode for a real TTY.
     # Pipes and regular files reject this option.
     if {[catch {fconfigure $channel -mode}]} {
@@ -218,14 +236,21 @@ proc ::styleTerminalText {channel text style} {
 }
 
 proc ::configureStandardChannels {} {
-    if {$::tcl_platform(platform) eq "windows"} {
-        # Keep Tcl and the Windows console on the same code page so Unicode
-        # model output is not decoded as legacy ANSI/OEM text.
-        catch {exec chcp.com 65001 > nul}
-    }
-    foreach channel {stdin stdout stderr} {
-        catch {fconfigure $channel -encoding utf-8}
-    }
+	puts "Configuring channels"
+	if {$::tcl_platform(platform) eq "windows"} {
+		puts "we are here"
+		# Set console to UTF-8
+		catch {exec chcp.com 65001 > nul}
+		# BUT don't change stdout encoding - let Tcl use its Windows Unicode handler
+		# Only set stdin if you need to read UTF-8 input
+		#catch {fconfigure stdin -encoding utf-8}
+	} else {
+		# On Unix/Linux/macOS, UTF-8 everywhere is fine
+		foreach channel {stdin stdout stderr} {
+			puts "channel : $channel"
+			catch {fconfigure $channel -encoding utf-8}
+		}
+	}
 }
 
 proc ::printInteractiveBanner {outputChannel} {
@@ -235,13 +260,8 @@ proc ::printInteractiveBanner {outputChannel} {
         return
     }
 
-    set boxType [expr {$::tcl_platform(platform) eq "windows"
-        ? "ascii" : "rounded"}]
-    set banner [zesty::box \
-        -title {name "OODZ Agent" anchor "nw" style {fg cyan bold 1}} \
-        -content {text "Tcl coding agent\nType /help for commands."} \
-        -box [list type $boxType style {fg cyan}] \
-        -paddingX 1]
+    set boxType [expr {$::tcl_platform(platform) eq "windows" ? "ascii" : "rounded"}]
+    set banner [zesty::box -title {name "OODZ Agent" anchor "nw" style {fg cyan bold 1}} -content {text "Tcl coding agent\nType /help for commands."} -box [list type $boxType style {fg cyan}] -paddingX 1]
     puts $outputChannel [zesty::parseStyle $banner {}]
 }
 
@@ -267,10 +287,8 @@ proc ::requestPluginApproval {inputChannel outputChannel name arguments} {
     } else {
         set prompt "Allow write plugin '$name'$target? \[y/N/all for session\] "
     }
-    set styledPrompt [::styleTerminalText \
-        $outputChannel $prompt {fg yellow bold 1}]
-    lassign [::readInteractiveLine \
-        $inputChannel $outputChannel $styledPrompt] readCount answer
+    set styledPrompt [::styleTerminalText $outputChannel $prompt {fg yellow bold 1}]
+    lassign [::readInteractiveLine $inputChannel $outputChannel $styledPrompt] readCount answer
     if {$readCount < 0} {
         puts $outputChannel ""
         return 0
@@ -285,8 +303,7 @@ proc ::requestPluginApproval {inputChannel outputChannel name arguments} {
 }
 
 proc ::printStreamChunk {outputChannel chunk} {
-    puts -nonewline $outputChannel \
-        [::styleTerminalText $outputChannel $chunk {fg 117}]
+    puts -nonewline $outputChannel [::styleTerminalText $outputChannel $chunk {fg 117}]
     flush $outputChannel
 }
 
@@ -295,8 +312,7 @@ proc ::printConversationSeparator {outputChannel} {
         return
     }
     set character [expr {$::tcl_platform(platform) eq "windows" ? "-" : "─"}]
-    puts $outputChannel [::styleTerminalText $outputChannel \
-        [string repeat $character 56] {fg 60 dim 1}]
+    puts $outputChannel [::styleTerminalText $outputChannel [string repeat $character 56] {fg 60 dim 1}]
 }
 
 proc ::readRecentLog {path {lineLimit 20}} {
@@ -314,10 +330,7 @@ proc ::readRecentLog {path {lineLimit 20}} {
 }
 
 proc ::readInteractiveLine {inputChannel outputChannel prompt} {
-    if {$::tclReadlineAvailable
-            && $inputChannel eq "stdin"
-            && $outputChannel in {stdout stderr}
-            && [::terminalStyleEnabled $outputChannel]} {
+    if {$::tclReadlineAvailable && $inputChannel eq "stdin" && $outputChannel in {stdout stderr} && [::terminalStyleEnabled $outputChannel]} {
         if {[catch {
             ::tclreadline::readline read $prompt
         } line]} {
@@ -339,10 +352,8 @@ proc ::runInteractive {
     ::printInteractiveBanner $outputChannel
 
     while 1 {
-        set prompt [::styleTerminalText \
-            $outputChannel "you> " {fg 213 bold 1}]
-        lassign [::readInteractiveLine \
-            $inputChannel $outputChannel $prompt] readCount line
+        set prompt [::styleTerminalText $outputChannel "you> " {fg 213 bold 1}]
+        lassign [::readInteractiveLine $inputChannel $outputChannel $prompt] readCount line
         if {$readCount < 0} {
             return 0
         }
@@ -353,16 +364,13 @@ proc ::runInteractive {
         }
 
         if {$line eq "/multi"} {
-            puts $outputChannel [::styleTerminalText $outputChannel \
-                "Multiline mode: /send submits, /cancel aborts." {fg cyan}]
+            puts $outputChannel [::styleTerminalText $outputChannel "Multiline mode: /send submits, /cancel aborts." {fg cyan}]
             set multilineLines {}
             set multilineCancelled 0
             while 1 {
-                set continuationPrompt [::styleTerminalText \
-                    $outputChannel "...> " {fg 213}]
+                set continuationPrompt [::styleTerminalText $outputChannel "...> " {fg 213}]
                 lassign [::readInteractiveLine \
-                    $inputChannel $outputChannel $continuationPrompt] \
-                    multilineCount multilineLine
+                    $inputChannel $outputChannel $continuationPrompt] multilineCount multilineLine
                 if {$multilineCount < 0} {
                     return 0
                 }
@@ -377,56 +385,42 @@ proc ::runInteractive {
                 lappend multilineLines $multilineLine
             }
             if {$multilineCancelled} {
-                puts $outputChannel [::styleTerminalText $outputChannel \
-                    "Multiline input cancelled." {fg yellow}]
+                puts $outputChannel [::styleTerminalText $outputChannel "Multiline input cancelled." {fg yellow}]
                 continue
             }
             if {[llength $multilineLines] == 0} {
-                puts $errorChannel [::styleTerminalText $errorChannel \
-                    "Multiline input is empty." {fg red}]
+                puts $errorChannel [::styleTerminalText $errorChannel "Multiline input is empty." {fg red}]
                 continue
             }
             set line [join $multilineLines "\n"]
         }
 
-        if {[regexp {^/oodz_trns(?:[[:space:]]+(.*))?$} \
-                $line -> translationLabel]} {
-            if {![info exists translationLabel] \
-                    || [string trim $translationLabel] eq ""} {
-                puts $errorChannel [::styleTerminalText $errorChannel \
-                    "Usage: /oodz_trns label" {fg red}]
+        if {[regexp {^/oodz_trns(?:[[:space:]]+(.*))?$} $line -> translationLabel]} {
+            if {![info exists translationLabel] || [string trim $translationLabel] eq ""} {
+                puts $errorChannel [::styleTerminalText $errorChannel "Usage: /oodz_trns label" {fg red}]
                 continue
             }
             set translationLabel [string trim $translationLabel]
-            set line [join [list \
-                "Translate the label '$translationLabel' into native-script" \
-                "Portuguese, Simplified Chinese, Russian, French, Spanish," \
-                "and English, then save it using save_translation." \
-                "Never transliterate any language."] " "]
+            set line [join [list "Translate the label '$translationLabel' into native-script" "Portuguese, Simplified Chinese, Russian, French, Spanish," "and English, then save it using save_translation." "Never transliterate any language."] " "]
         }
 
         if {[regexp {^/tool(?:[[:space:]]|$)} $line]} {
             set invocation [string trim [string range $line 5 end]]
             if {$invocation eq ""} {
-                puts $errorChannel [::styleTerminalText $errorChannel \
-                    "Usage: /tool name ?JSON arguments?" {fg red}]
+                puts $errorChannel [::styleTerminalText $errorChannel "Usage: /tool name ?JSON arguments?" {fg red}]
                 continue
             }
-            if {![regexp {^(\S+)(?:[[:space:]]+(.*))?$} \
-                    $invocation -> toolName toolArguments]} {
-                puts $errorChannel [::styleTerminalText $errorChannel \
-                    "Usage: /tool name ?JSON arguments?" {fg red}]
+            if {![regexp {^(\S+)(?:[[:space:]]+(.*))?$} $invocation -> toolName toolArguments]} {
+                puts $errorChannel [::styleTerminalText $errorChannel "Usage: /tool name ?JSON arguments?" {fg red}]
                 continue
             }
-            if {![info exists toolArguments] \
-                    || [string trim $toolArguments] eq ""} {
+            if {![info exists toolArguments] || [string trim $toolArguments] eq ""} {
                 set toolArguments "{}"
             }
             if {[catch {
                 $pluginRegistry invoke $toolName $toolArguments
             } toolResult]} {
-                puts $errorChannel [::styleTerminalText $errorChannel \
-                    "Tool error: $toolResult" {fg red bold 1}]
+                puts $errorChannel [::styleTerminalText $errorChannel "Tool error: $toolResult" {fg red bold 1}]
                 continue
             }
             puts $outputChannel $toolResult
@@ -465,11 +459,8 @@ proc ::runInteractive {
                     if {[dict exists $message content]} {
                         set content [dict get $message content]
                     }
-                    set historyStyle [expr {$role eq "user"
-                        ? {fg 213 bold 1}
-                        : {fg 117}}]
-                    puts $outputChannel [::styleTerminalText \
-                        $outputChannel "$role> $content" $historyStyle]
+                    set historyStyle [expr {$role eq "user" ? {fg 213 bold 1} : {fg 117}}]
+                    puts $outputChannel [::styleTerminalText $outputChannel "$role> $content" $historyStyle]
                 }
             }
             /logs {
@@ -480,53 +471,36 @@ proc ::runInteractive {
                 if {$historyStore ne ""} {
                     $historyStore clear
                 }
-                puts $outputChannel [::styleTerminalText $outputChannel \
-                    "Started a new conversation." {fg green}]
+                puts $outputChannel [::styleTerminalText $outputChannel "Started a new conversation." {fg green}]
             }
             default {
                 if {[string index $line 0] eq "/"} {
-                    puts $errorChannel [::styleTerminalText $errorChannel \
-                        "Unknown command: $line (use /help)" {fg red}]
+                    puts $errorChannel [::styleTerminalText $errorChannel "Unknown command: $line (use /help)" {fg red}]
                     continue
                 }
                 ::printConversationSeparator $outputChannel
                 if {[catch {$agent run $line} response]} {
-                    puts $errorChannel [::styleTerminalText $errorChannel \
-                        "Error: $response" {fg red bold 1}]
-                    if {$historyStore ne ""
-                            && [catch {
-                                $historyStore saveState \
-                                    [$agent getHistoryState]
-                            } historyError]} {
-                        puts $errorChannel [::styleTerminalText $errorChannel \
-                            "History error: $historyError" {fg red}]
+                    puts $errorChannel [::styleTerminalText $errorChannel "Error: $response" {fg red bold 1}]
+                    if {$historyStore ne "" && [catch { $historyStore saveState [$agent getHistoryState] } historyError]} {
+                        puts $errorChannel [::styleTerminalText $errorChannel "History error: $historyError" {fg red}]
                     }
                     continue
                 }
                 if {[$agent usesStreaming]} {
                     flush $outputChannel
                 } else {
-                    puts $outputChannel [::styleTerminalText \
-                        $outputChannel $response {fg 117}]
+                    puts $outputChannel [::styleTerminalText $outputChannel $response {fg 117}]
                 }
-                if {$historyStore ne ""
-                        && [catch {
-                            $historyStore saveState [$agent getHistoryState]
-                        } historyError]} {
-                    puts $errorChannel [::styleTerminalText $errorChannel \
-                        "History error: $historyError" {fg red}]
+                if {$historyStore ne "" && [catch { $historyStore saveState [$agent getHistoryState] } historyError]} {
+                    puts $errorChannel [::styleTerminalText $errorChannel "History error: $historyError" {fg red}]
                 }
             }
         }
     }
 }
 
-proc ::main {
-    scriptDir arguments {clientObject ""} {outChannel stdout} {errChannel stderr}
-    {inChannel stdin} {historyPathOverride ""}
-} {
-    if {[llength $arguments] == 1
-            && [lindex $arguments 0] in {-h --help}} {
+proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChannel stderr} {inChannel stdin} {historyPathOverride ""}} {
+    if {[llength $arguments] == 1 && [lindex $arguments 0] in {-h --help}} {
         puts $outChannel [::usage]
         return 0
     }
@@ -544,12 +518,7 @@ proc ::main {
     set historyStore ""
     set logPath ""
     set ownsClient [expr {$clientObject eq ""}]
-    set productionLogging [expr {
-        $ownsClient
-        && $outChannel eq "stdout"
-        && $errChannel eq "stderr"
-    }]
-
+    set productionLogging [expr {$ownsClient && $outChannel eq "stdout" && $errChannel eq "stderr" }]
     try {
         set config [::Config new]
         set backend [::Config::Backend::Ini new]
@@ -568,14 +537,10 @@ proc ::main {
         set globalLog [::tLogger getLogger "Global"]
         $globalLog setLogLevel [$config get Logging.level info]
 
-        set workspaceRoot [::resolveWorkspaceRoot \
-            $scriptDir [$config get Workspace.root .]]
-        set workspaceInstructions [::loadWorkspaceInstructions \
-            $workspaceRoot [$config get Workspace.instructions ""] \
-            [$config get Workspace.instructions_max_file_bytes 16384]]
+        set workspaceRoot [::resolveWorkspaceRoot $scriptDir [$config get Workspace.root .]]
+        set workspaceInstructions [::loadWorkspaceInstructions $workspaceRoot [$config get Workspace.instructions ""] [$config get Workspace.instructions_max_file_bytes 16384]]
         set referenceRoots [dict create]
-        set oodzRoot [::resolveOptionalReferenceRoot \
-            $scriptDir [$config get OODZ.root ""] OODZ.root]
+        set oodzRoot [::resolveOptionalReferenceRoot $scriptDir [$config get OODZ.root ""] OODZ.root]
         if {$oodzRoot ne ""} {
             dict set referenceRoots oodz $oodzRoot
         }
@@ -583,82 +548,36 @@ proc ::main {
         if {$ownsClient} {
             set aiEngine [tLLMClient new $config]
         }
-        set skillRegistry [tSkillRegistry new \
-            [::resolveSkillDirectories $scriptDir \
-                [$config get Skills.directories ""]] \
-            [$config get Skills.max_file_bytes 65536]]
-        set instructionRegistry [tInstructionRegistry new \
-            $workspaceRoot [$config get Workspace.instructions ""] \
-            [$config get Workspace.instructions_max_file_bytes 16384] \
-            [$config get Workspace.instructions_max_total_bytes 65536]]
+        set skillRegistry [tSkillRegistry new [::resolveSkillDirectories $scriptDir [$config get Skills.directories ""]] [$config get Skills.max_file_bytes 65536]]
+        set instructionRegistry [tInstructionRegistry new $workspaceRoot [$config get Workspace.instructions ""] [$config get Workspace.instructions_max_file_bytes 16384] [$config get Workspace.instructions_max_total_bytes 65536]]
         set runnerEnabled [$config get Runner.enabled false]
         if {![string is boolean -strict $runnerEnabled]} {
             error "Runner.enabled must be boolean"
         }
         if {$runnerEnabled} {
-            set processRunner [tProcessRunner new \
-                $workspaceRoot \
-                [$config get Runner.tclsh tclsh9.0] \
-                [$config get Runner.backend direct] \
-                [$config get Runner.sandbox bwrap] \
-                [$config get Runner.timeout_ms 10000] \
-                [$config get Runner.max_output_chars 65536] \
-                "" \
-                [dict create fossil \
-                    [$config get Executables.fossil fossil]]]
-            set projectTestsEnabled \
-                [$config get Runner.project_tests_enabled false]
+            set processRunner [tProcessRunner new $workspaceRoot [$config get Runner.tclsh tclsh9.0] [$config get Runner.backend direct] [$config get Runner.sandbox bwrap] [$config get Runner.timeout_ms 10000] [$config get Runner.max_output_chars 65536] "" [dict create fossil [$config get Executables.fossil fossil]]]
+            set projectTestsEnabled [$config get Runner.project_tests_enabled false]
             if {![string is boolean -strict $projectTestsEnabled]} {
                 error "Runner.project_tests_enabled must be boolean"
             }
             if {$projectTestsEnabled} {
-                $processRunner configureProjectTests \
-                    [$config get Runner.project_tests_executable ""] \
-                    [$config get Runner.project_tests_arguments ""] \
-                    [$config get Runner.project_tests_timeout_ms 60000]
+                $processRunner configureProjectTests [$config get Runner.project_tests_executable ""] [$config get Runner.project_tests_arguments ""] [$config get Runner.project_tests_timeout_ms 60000]
             }
         }
-        set pluginRegistry [tPluginRegistry new \
-            $workspaceRoot \
-            [::resolvePluginDirectories $scriptDir \
-                [$config get Plugins.directories ""]] \
-            [list ::requestPluginApproval $inChannel $errChannel] \
-            [$config get Plugins.timeout_ms 1000] \
-            [$config get Plugins.max_output_chars 65536] \
-            $referenceRoots \
-            $skillRegistry \
-            $instructionRegistry \
-            $processRunner]
-        set systemRole [::buildAgentSystemRole \
-            $config $workspaceInstructions [$skillRegistry summaries] \
-            [$instructionRegistry enabled] $runnerEnabled]
-        set codingAgent [tAgent new \
-            [$config get Agent.name] \
-            $systemRole \
-            $aiEngine \
-            $pluginRegistry \
-            [$config get Agent.max_iterations 16] \
-            [expr {$interactive
-                ? [list ::printStreamChunk $outChannel]
-                : ""}] \
-            [$config get Agent.max_history_messages 40] \
-            [$config get Agent.summarize_history false]]
+        set pluginRegistry [tPluginRegistry new $workspaceRoot [::resolvePluginDirectories $scriptDir [$config get Plugins.directories ""]] [list ::requestPluginApproval $inChannel $errChannel] [$config get Plugins.timeout_ms 1000] [$config get Plugins.max_output_chars 65536] $referenceRoots $skillRegistry $instructionRegistry $processRunner]
+        set systemRole [::buildAgentSystemRole $config $workspaceInstructions [$skillRegistry summaries] [$instructionRegistry enabled] $runnerEnabled]
+        set codingAgent [tAgent new [$config get Agent.name] $systemRole $aiEngine $pluginRegistry [$config get Agent.max_iterations 16] [expr {$interactive ? [list ::printStreamChunk $outChannel] : ""}] [$config get Agent.max_history_messages 40] [$config get Agent.summarize_history false]]
 
         if {$interactive} {
             set readlineHistoryPath ""
-            if {$::tclReadlineAvailable
-                    && $inChannel eq "stdin"
-                    && $outChannel eq "stdout"
-                    && [::terminalStyleEnabled $outChannel]} {
-                set readlineHistoryPath \
-                    [file join $scriptDir .oodz readline-history]
+            if {$::tclReadlineAvailable && $inChannel eq "stdin" && $outChannel eq "stdout" && [::terminalStyleEnabled $outChannel]} {
+                set readlineHistoryPath [file join $scriptDir .oodz readline-history]
                 file mkdir [file dirname $readlineHistoryPath]
                 if {[catch {
                     ::tclreadline::readline initialize $readlineHistoryPath
                 } readlineError]} {
                     set ::tclReadlineAvailable 0
-                    $globalLog log warn \
-                        "tclreadline initialization failed: $readlineError"
+                    $globalLog log warn "tclreadline initialization failed: $readlineError"
                 } else {
                     set ::tclreadline::historyLength 200
                 }
@@ -666,8 +585,7 @@ proc ::main {
             if {$ownsClient || $historyPathOverride ne ""} {
                 set historyPath $historyPathOverride
                 if {$historyPath eq ""} {
-                    set historyPath \
-                        [$config get Agent.history_file .oodz/history.json]
+                    set historyPath [$config get Agent.history_file .oodz/history.json]
                 }
                 if {[file pathtype $historyPath] ne "absolute"} {
                     set historyPath [file join $scriptDir $historyPath]
@@ -676,15 +594,11 @@ proc ::main {
                 $codingAgent replaceHistoryState [$historyStore loadState]
             }
             try {
-                return [::runInteractive \
-                    $codingAgent $pluginRegistry $skillRegistry \
-                    $historyStore $logPath \
-                    $inChannel $outChannel $errChannel]
+                return [::runInteractive $codingAgent $pluginRegistry $skillRegistry $historyStore $logPath $inChannel $outChannel $errChannel]
             } finally {
                 if {$readlineHistoryPath ne ""} {
                     catch {::tclreadline::readline write $readlineHistoryPath}
-                    catch {file attributes \
-                        $readlineHistoryPath -permissions 0600}
+                    catch {file attributes $readlineHistoryPath -permissions 0600}
                 }
             }
         } else {
@@ -706,9 +620,7 @@ proc ::main {
                 && [info object isa object $aiEngine]} {
             $aiEngine destroy
         }
-        foreach object [list \
-                $historyStore $instructionRegistry $skillRegistry \
-                $processRunner $pluginRegistry $backend $config] {
+        foreach object [list $historyStore $instructionRegistry $skillRegistry $processRunner $pluginRegistry $backend $config] {
             if {$object ne "" && [info object isa object $object]} {
                 $object destroy
             }
@@ -716,8 +628,7 @@ proc ::main {
     }
 }
 
-if {[info exists ::argv0]
-        && [file normalize [info script]] eq [file normalize $::argv0]} {
+if {[info exists ::argv0] && [file normalize [info script]] eq [file normalize $::argv0]} {
     ::configureStandardChannels
     exit [::main $scriptDir $::argv]
 }
