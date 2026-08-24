@@ -17,23 +17,35 @@
   </div></nav>
 
   <main class="container py-5">
-    <div class="section-heading"><span>Guide</span><h1 class="display-4">Getting started</h1><p class="lead text-secondary">Install the runtime, configure DeepSeek or Ollama, and learn the interactive commands.</p></div>
+    <div class="section-heading"><span>Guide</span><h1 class="display-4">Getting started</h1><p class="lead text-secondary">Learn how to install, configure and use OODZ agent.</p></div>
     <div class="docs-shell">
       <aside class="docs-sidebar"><nav class="nav flex-column"><a class="nav-link" href="#requirements">Requirements</a><a class="nav-link" href="#configure">Configuration</a><a class="nav-link" href="#run">Run the agent</a><a class="nav-link" href="#commands">CLI commands</a></nav></aside>
       <article class="docs-content">
-        <section id="requirements"><h2>Requirements</h2>
-          <ul><li>Tcl 9.0 or newer</li><li>Tcl TLS package</li><li>Tcllib packages: <code>http</code>, <code>json</code>, <code>json::write</code>, and <code>fileutil</code></li></ul>
-          <p>The repository bundles <code>inifile</code>, <code>tConfClass</code>, <code>tLogger</code>, and <code>zesty</code>.</p>
+        <section id="requirements">
+          <h2>Requirements</h2>
+          <p>The agent has been tested on Linux, Windows, and FreeBSD. To run the agent, you will need:</p>
+          <ul>
+            <li>Tcl 9.0 or newer</li>
+            <li>Tcl TLS package</li>
+            <li>Tcllib packages: <code>http</code>, <code>json</code>, <code>json::write</code>, and <code>fileutil</code></li>
+            <li><code>Twapi</code> (needed for colorful output under Windows)
+          </ul>
+          <p>The repository includes <code>inifile</code>, <code>tConfClass</code>, <code>tLogger</code>, and <code>zesty</code>.</p>
+
           <div class="code-block"><header><span>Check packages</span><span>shell</span></header><pre><code>tclsh &lt;&lt;'EOF'
 foreach package {Tcl tls http json json::write fileutil} {
     puts "$package [package require $package]"
 }
 EOF</code></pre></div>
         </section>
-        <section id="configure"><h2>Configuration</h2><p>Create the ignored private configuration, restrict it to your user, and then edit it:</p>
-          <div class="code-block"><header><span>Create private configuration</span><span>shell</span></header><pre><code>cp conf/conf.example.ini conf/conf.ini
+        <section id="configure"><h2>Configuration</h2><p>The main configuration format uses <code>INI</code> files. If your first question is <em>"why not JSON or another format?"</em>, then this agent is probably not for you.</p><p>Create your private configuration file, restrict its permissions to your user, and then edit it:</p>
+
+        <div class="code-block"><header><span>Linux</span><span>shell</span></header><pre><code>cp conf/conf.example.ini conf/conf.ini
 chmod 600 conf/conf.ini</code></pre></div>
-          <p>Git and Fossil ignore <code>conf/conf.ini</code>. Publish only <code>conf/conf.example.ini</code>, which contains placeholders and conservative defaults.</p>
+<div class="code-block"><header><span>Windows</span><span>powershell</span></header><pre><code>Copy-Item conf\conf.example.ini conf\conf.ini
+</code></pre></div>
+
+          <p>The file looks smth like this, and contains placeholders and conservative defaults that you need to edit:</p>
           <div class="code-block"><header><span>conf/conf.ini</span><span>ini</span></header><pre><code>[LLM]
 provider = deepseek
 url = https://api.deepseek.com/chat/completions
@@ -90,24 +102,25 @@ project_tests_enabled = false
 project_tests_executable = tclsh9.0
 project_tests_arguments = tests/all.tcl
 project_tests_timeout_ms = 60000</code></pre></div>
-          <p><code>Workspace.instructions</code> names an optional UTF-8 instruction filename. The root file is sent with every request. Before changing nested files, <code>load_project_instructions</code> discovers matching files from the workspace root through the target directory. Closer instructions refine conventions for their subtree. Leave the setting empty to disable project instructions.</p>
-          <p><code>Plugins.directories</code> accepts comma-separated absolute or installation-relative personal plugin roots. Each configured directory must already exist.</p>
-          <p><code>Skills.directories</code> accepts comma-separated personal skill roots. Skill names and trigger descriptions are included in the system prompt; complete instructions are retrieved only when the model calls <code>load_skill</code>.</p>
-          <p><code>Executables.fossil</code> configures one trusted executable name or absolute path for every bundled Fossil plugin. The default <code>fossil</code> resolves through <code>PATH</code>. On Windows, a full path may be written as <code>C:/Tools/Fossil/fossil.exe</code>.</p>
-          <h3>Windows</h3>
-          <p>Use forward slashes for absolute INI paths, for example <code>D:/projects/client</code>. The built-in <code>skills/</code> directory is always loaded; personal skill roots may be anywhere and are added with <code>Skills.directories</code>. The CLI selects the UTF-8 console code page and uses ASCII borders for CMD and PowerShell compatibility.</p>
-          <div class="code-block"><header><span>PowerShell</span><span>powershell</span></header><pre><code>Copy-Item conf\conf.example.ini conf\conf.ini
-tclsh90.exe .\main.tcl
-wish90.exe .\gui.tcl</code></pre></div>
-          <p><code>GUI.theme_package</code> optionally loads a Tcl package from <code>lib/</code> or one of its immediate package directories. <code>GUI.theme</code> then selects one of the themes provided by that package. Leave both empty to use the platform default. The example loads the bundled Arc package and selects <code>Arc-Dark</code>; use <code>Arc</code> for its light variant. Invalid package or theme names stop GUI startup with a clear error.</p>
-          <p>When both Arc variants are available, the action bar includes a <strong>Dark</strong> toggle for switching the current GUI session. The configured <code>GUI.theme</code> remains the preference used at the next startup.</p>
-          <blockquote class="notice warning"><strong>Danger: this is not a safe agent.</strong> The default <code>direct</code> runner executes AI-created Tcl with the same operating-system permissions as the user. It can read, modify, or delete accessible files, start processes, access the network, and inspect environment variables. Enable it only if you understand the consequences and maintain recoverable backups or version control.</blockquote>
-          <p><code>run_tcl_file</code> accepts only an approved workspace-relative Tcl file and enforces time/output limits, but the <code>direct</code> backend provides no OS isolation. Every execution receives a separate approval; “All for session” does not apply. Linux users may select <code>Runner.backend = bubblewrap</code> for optional containment. Set <code>Runner.enabled = false</code> to remove execution entirely.</p>
-          <p>Enable <code>Runner.project_tests_enabled</code> to expose <code>run_project_tests</code>. Its executable and Tcl-list arguments come only from trusted configuration; the model supplies no command fields. The profile uses the same backend and always requires separate approval.</p>
-          <blockquote class="notice warning"><strong>Keep the key private.</strong> Do not commit or share a real API credential.</blockquote>
-          <h3>Local Ollama</h3>
-          <p>Ollama uses the same OpenAI-compatible client. Choose a locally installed model that supports tool calling.</p>
-          <div class="code-block"><header><span>conf/conf.ini</span><span>ini</span></header><pre><code>[LLM]
+<hr>
+  <h3>Technical & Contextual Notes</h3>
+  <h4>Required Config Options</h4>
+  <p>The example configuration file is mostly self-explanatory, but a few settings are required:</p>
+  <ul>
+    <li><code>LLM.provider</code> - Set this to <code>deepseek</code> or <code>ollama</code>.</li>
+    <li><code>LLM.url</code> - The base endpoint address for your API calls.</li>
+    <li><code>LLM.api_key</code> - Your private authorization key for the chosen provider.</li>
+    <li><code>LLM.model</code> - The specific AI model name to use.</li>
+    <li><code>Workspace.root</code> - The project folder where the agent operates; the agent will try to stay inside this folder ;)</li>
+    <li><code>Workspace.instructions</code> - The Markdown file containing specific instructions for the agent.</li>
+    <li><code>Runner.enabled</code> - Set to <code>true</code> or <code>false</code> to permit the agent to execute Tclsh, Fossil, or other system binaries.</li>
+  </ul>
+
+<hr>
+<h4>Local Ollama</h4>
+<p>Ollama uses the same OpenAI-compatible client. Choose a locally installed model that supports tool calling.</p>
+<div class="code-block"><header><span>conf/conf.ini</span><span>ini</span></header><pre>
+<code>[LLM]
 provider = ollama
 url = http://localhost:11434/v1/chat/completions
 api_key =
@@ -115,13 +128,46 @@ model = qwen3
 thinking = false
 timeout = 60000
 max_retries = 2
-retry_delay_ms = 250</code></pre></div>
-        </section>
-        <section id="run"><h2>Run the agent</h2>
-          <div class="code-block"><header><span>Interactive</span><span>shell</span></header><pre><code>tclsh main.tcl</code></pre></div>
-          <p>Interactive responses stream to the terminal and conversation context persists across restarts.</p>
-          <div class="code-block"><header><span>One shot</span><span>shell</span></header><pre><code>tclsh main.tcl "Explain the plugin architecture."</code></pre></div>
-          <p>One-shot mode remains stateless and prints one complete answer to standard output.</p>
+retry_delay_ms = 250</code>
+</pre></div>
+
+<hr>
+<h4>Instructions, Plugins and Skills</h4>
+<p><code>Workspace.instructions</code> specifies an optional UTF-8 instruction file. The root-level file is included with every request. When modifying nested files, <code>load_project_instructions</code> locates relevant instruction files by traversing from the workspace root down to the target directory. Instructions closer to the target refine or override conventions for that subtree. Leave the setting empty to disable project instructions entirely.</p>
+<hr>
+<p><code>Plugins.directories</code> accepts a comma-separated list of absolute or installation-relative paths to personal plugin directories. Each specified directory must already exist.</p>
+<hr>
+<p><code>Skills.directories</code> accepts a comma-separated list of personal skill directories. Skill names and their trigger descriptions are included in the system prompt; full instructions are loaded only when the model invokes <code>load_skill</code>.
+The built-in <code>skills/</code> directory is always loaded; additional personal skill roots can be placed anywhere and are specified via <code>Skills.directories</code>.
+</p>
+
+<hr>
+<h4>Notes for Windows users</h4>
+<p>Use forward slashes for absolute INI paths, for example <code>D:/projects/client</code>.
+
+<hr>
+<h4>Themes</h4>
+<p>Set <code>GUI.theme_package</code> to your ttk theme package name and <code>GUI.theme</code> to the desired theme. Place the package in <code>lib/</code>. Leave both empty for the system default.</p>
+
+
+<hr>
+<h4>Extra notes (need editing)</h4>
+          <p><code>Executables.fossil</code> configures one trusted executable name or absolute path for every bundled Fossil plugin. The default <code>fossil</code> resolves through <code>PATH</code>. On Windows, a full path may be written as <code>C:/Tools/Fossil/fossil.exe</code>.</p>
+
+          <blockquote class="notice warning"><strong>Danger: this is not a safe agent.</strong> The default <code>direct</code> runner executes AI-created Tcl with the same operating-system permissions as the user. It can read, modify, or delete accessible files, start processes, access the network, and inspect environment variables. Enable it only if you understand the consequences and maintain recoverable backups or version control.</blockquote>
+
+          <p><code>run_tcl_file</code> accepts only an approved workspace-relative Tcl file and enforces time/output limits, but the <code>direct</code> backend provides no OS isolation. Every execution receives a separate approval; “All for session” does not apply. Linux users may select <code>Runner.backend = bubblewrap</code> for optional containment. Set <code>Runner.enabled = false</code> to remove execution entirely.</p>
+          <p>Enable <code>Runner.project_tests_enabled</code> to expose <code>run_project_tests</code>. Its executable and Tcl-list arguments come only from trusted configuration; the model supplies no command fields. The profile uses the same backend and always requires separate approval.</p>
+</section>
+
+
+<section id="run"><h2>Run the agent</h2>
+<div class="code-block"><header><span>Interactive CLI</span><span>shell</span></header><pre><code>tclsh ./main.tcl</code></pre></div><p>Responses stream to the terminal in real time, and conversation history persists across restarts.</p>
+
+<div class="code-block"><header><span>One shot</span><span>shell</span></header><pre><code>tclsh ./main.tcl "Explain the plugin architecture."</code></pre></div><p>One-shot mode is stateless and prints a single complete response to standard output and exits.</p>
+
+<div class="code-block"><header><span>GUI</span><span>shell</span></header><pre><code>tclsh ./gui.tcl</code></pre></div><p>Launch the graphical interface.</p><p>The GUI mode provides a visual chat like interface with theme support and a dark mode toggle.</p>
+
         </section>
         <section id="commands"><h2>CLI commands</h2>
           <div class="table-responsive"><table class="table command-table"><tbody>
