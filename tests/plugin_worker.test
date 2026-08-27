@@ -1,0 +1,144 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+namespace eval ::WorkerCapture {
+    variable done 0
+    variable requestId 0
+    variable envelope {}
+
+    proc receive {id resultEnvelope} {
+        variable done
+        variable requestId
+        variable envelope
+        set requestId $id
+        set envelope $resultEnvelope
+        set done 1
+    }
+}
+
+test plugin-worker-1.1 {worker invokes plugins synchronously and returns errors} -body {
+    set worker [tPluginWorker new \
+        $projectDir $projectDir [list [file join $projectDir plugins]] \
+        1000 65536]
+    try {
+        set result [$worker invoke file_info [::json::write object \
+            path [::json::write string main.tcl]]]
+        set errorCode [catch {
+            $worker invoke file_info [::json::write object \
+                path [::json::write string missing-worker-file]]
+        } errorMessage]
+        list \
+            [expr {[string first "Path: main.tcl" $result] >= 0}] \
+            $errorCode $errorMessage \
+            [thread::exists [$worker threadId]]
+    } finally {
+        $worker destroy
+    }
+} -result [list \
+    1 1 "Path does not exist: missing-worker-file" 1]
+
+test plugin-worker-1.2 {worker delivers asynchronous result through event loop} -body {
+    set ::WorkerCapture::done 0
+    set ::WorkerCapture::requestId 0
+    set ::WorkerCapture::envelope {}
+    set worker [tPluginWorker new \
+        $projectDir $projectDir [list [file join $projectDir plugins]] \
+        1000 65536]
+    try {
+        set requestId [$worker invokeAsync file_info [::json::write object \
+            path [::json::write string main.tcl]] \
+            ::WorkerCapture::receive]
+        set busyBefore [$worker busy]
+        vwait ::WorkerCapture::done
+        list \
+            $requestId $busyBefore [$worker busy] \
+            $::WorkerCapture::requestId \
+            [dict get $::WorkerCapture::envelope status] \
+            [expr {[string first "Path: main.tcl" \
+                [dict get $::WorkerCapture::envelope result]] >= 0}]
+    } finally {
+        $worker destroy
+    }
+} -result [list 1 1 0 1 ok 1]
+
+test plugin-worker-1.3 {registry keeps write approval before worker dispatch} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] plugin-worker-approval-[pid]]]
+    file mkdir $root
+    set worker [tPluginWorker new \
+        $projectDir $root [list [file join $projectDir plugins]] \
+        1000 65536]
+    set registry [tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" "" \
+        false {} "" $worker]
+    try {
+        set ::ApprovalMock::approved 0
+        set denied [catch {
+            $registry invoke write_file [::json::write object \
+                path [::json::write string result.txt] \
+                content [::json::write string denied]]
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set written [$registry invoke write_file [::json::write object \
+            path [::json::write string result.txt] \
+            content [::json::write string threaded]]]
+        set channel [open [file join $root result.txt] r]
+        set content [read $channel]
+        close $channel
+        list $denied $deniedMessage $written $content
+    } finally {
+        $registry destroy
+        $worker destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: write_file" \
+    "Wrote file: result.txt" threaded]
+
+test plugin-worker-1.4 {synchronous compatibility keeps event loop responsive} -body {
+    set ::workerEventProcessed 0
+    set worker [tPluginWorker new \
+        $projectDir $projectDir [list [file join $projectDir tests fixtures \
+            safety_plugins]] 100 65536]
+    try {
+        after 10 {set ::workerEventProcessed 1}
+        set code [catch {
+            $worker invoke slow_test [::json::write object]
+        } message]
+        list $code $message $::workerEventProcessed
+    } finally {
+        $worker destroy
+        unset -nocomplain ::workerEventProcessed
+    }
+} -result [list \
+    1 "Plugin execution timed out: slow_test" 1]
+
+test plugin-worker-1.5 {worker reconstructs configured process runner} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] plugin-worker-runner-[pid]]]
+    file mkdir $root
+    set channel [open [file join $root hello.tcl] w]
+    puts $channel {puts "hello from worker"}
+    close $channel
+    set runnerConfig [dict create \
+        enabled true \
+        tclsh tclsh9.0 \
+        timeout_ms 2000 \
+        max_output_chars 65536 \
+        executable_aliases [dict create] \
+        project_tests_enabled false]
+    set worker [tPluginWorker new \
+        $projectDir $root [list [file join $projectDir plugins]] \
+        1000 65536 {} $runnerConfig]
+    try {
+        $worker invoke run_tcl_file [::json::write object \
+            path [::json::write string hello.tcl]]
+    } finally {
+        $worker destroy
+        file delete -force $root
+    }
+} -result "hello from worker"
+
+::finishTests

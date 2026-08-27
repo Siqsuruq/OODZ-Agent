@@ -1,0 +1,172 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test fossil-branch-close-1.1 {Fossil branch close is approved and local} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-branch-close-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set arguments [::json::write object \
+        name [::json::write string feature/accounts]]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_branch_close $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_branch_close $arguments]
+        set call [lindex $::RunnerMock::calls 0]
+        list $deniedCode $deniedMessage $result \
+            [lrange [lindex $call 0] 1 end]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_branch_close" \
+    "sandboxed Tcl output" \
+    [list branch close -- feature/accounts]]
+
+test fossil-branch-reopen-1.1 {Fossil branch reopen is approved and local} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-branch-reopen-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set arguments [::json::write object \
+        name [::json::write string feature/accounts]]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_branch_reopen $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_branch_reopen $arguments]
+        set call [lindex $::RunnerMock::calls 0]
+        list $deniedCode $deniedMessage $result \
+            [lrange [lindex $call 0] 1 end]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_branch_reopen" \
+    "sandboxed Tcl output" \
+    [list branch reopen -- feature/accounts]]
+
+test fossil-branch-new-1.1 {Fossil branch creation is approved and local} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-branch-new-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set arguments [::json::write object \
+        name [::json::write string feature/accounts] \
+        basis [::json::write string trunk]]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_branch_new $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_branch_new $arguments]
+        set call [lindex $::RunnerMock::calls 0]
+        list $deniedCode $deniedMessage $result \
+            [lrange [lindex $call 0] 1 end]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_branch_new" \
+    "sandboxed Tcl output" \
+    [list branch new --nosync -- feature/accounts trunk]]
+
+test fossil-branch-switch-1.1 {Fossil branch switching is approved and local} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-branch-switch-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set arguments [::json::write object \
+        name [::json::write string feature/accounts]]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_branch_switch $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_branch_switch $arguments]
+        set call [lindex $::RunnerMock::calls 0]
+        list $deniedCode $deniedMessage $result \
+            [lrange [lindex $call 0] 1 end]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_branch_switch" \
+    "sandboxed Tcl output" \
+    [list update --nosync -- feature/accounts]]
+
+test fossil-merge-1.1 {Fossil merge is one-source approved and local} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-merge-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set arguments [::json::write object source \
+        [::json::write string feature/accounts]]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_merge $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_merge $arguments]
+        set call [lindex $::RunnerMock::calls 0]
+        set emptyCode [catch {
+            $plugins invoke fossil_merge [::json::write object source \
+                [::json::write string "  "]]
+        } emptyMessage]
+        list $deniedCode $deniedMessage $result \
+            [lrange [lindex $call 0] 1 end] $emptyCode $emptyMessage
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_merge" \
+    "sandboxed Tcl output" \
+    [list merge --nosync -- feature/accounts] \
+    1 "fossil_merge source must not be empty"]
+
+
+::finishTests

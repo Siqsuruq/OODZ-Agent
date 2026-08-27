@@ -1,0 +1,306 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test agent-smoke-1.1 {agent returns response and records conversation} -body {
+    set client [::FakeLLMClient new]
+    set agent [::tAgent new TestAgent "Test system role" $client]
+
+    set response [$agent run "Test task"]
+    set result [list $response [$agent getHistory] [$client getCalls]]
+
+    $agent destroy
+    $client destroy
+    set result
+} -result [list \
+    "fake response" \
+    [list \
+        [dict create role user content "Test task"] \
+        [dict create role assistant content "fake response"]] \
+    [list [list "Test system role" [list \
+        [dict create role user content "Test task"]]]]]
+
+test agent-history-1.1 {second request contains the completed first turn} -body {
+    set client [::FakeLLMClient new [list "first response" "second response"]]
+    set agent [::tAgent new TestAgent "Test system role" $client]
+
+    $agent run "first task"
+    $agent run "second task"
+    set result [list [$client getCalls] [$agent getHistory]]
+
+    $agent destroy
+    $client destroy
+    set result
+} -result [list \
+    [list \
+        [list "Test system role" [list \
+            [dict create role user content "first task"]]] \
+        [list "Test system role" [list \
+            [dict create role user content "first task"] \
+            [dict create role assistant content "first response"] \
+            [dict create role user content "second task"]]]] \
+    [list \
+        [dict create role user content "first task"] \
+        [dict create role assistant content "first response"] \
+        [dict create role user content "second task"] \
+        [dict create role assistant content "second response"]]]
+
+test agent-history-1.2 {failed requests retain context for follow-ups} -body {
+    set client [::FailingLLMClient new]
+    set agent [::tAgent new TestAgent "Test system role" $client]
+
+    set runResult [catch {$agent run "failed task"} runMessage]
+    set result [list $runResult $runMessage [$agent getHistory]]
+
+    $agent destroy
+    $client destroy
+    set result
+} -result [list 1 "fake failure" [list \
+    [dict create role user content "failed task"] \
+    [dict create role assistant content \
+        "The previous task ended before a final response: fake failure"]]]
+
+test agent-history-1.3 {request context is bounded without trimming storage} -body {
+    set client [::FakeLLMClient new [list \
+        "one" "two" "three" "four"]]
+    set agent [::tAgent new \
+        TestAgent "Test system role" $client "" 8 "" 4]
+    try {
+        foreach task {first second third fourth} {
+            $agent run $task
+        }
+        set fourthRequest [lindex [lindex [$client getCalls] 3] 1]
+        list \
+            [lmap message $fourthRequest {dict get $message content}] \
+            [llength [$agent getHistory]]
+    } finally {
+        $agent destroy
+        $client destroy
+    }
+} -result [list [list "second" "two" "third" "three" "fourth"] 8]
+
+test agent-history-1.4 {an oversized tool turn is never split} -body {
+    set client [::FakeLLMClient new [list "follow-up answer"]]
+    set agent [::tAgent new \
+        TestAgent "Test system role" $client "" 8 "" 2]
+    set toolCall [dict create id call_1 type function function [dict create \
+        name read_file arguments {{"path":"main.tcl"}}]]
+    set history [list \
+        [dict create role user content old] \
+        [dict create role assistant content old-answer] \
+        [dict create role user content inspect] \
+        [dict create role assistant content "" tool_calls [list $toolCall]] \
+        [dict create role tool content contents tool_call_id call_1] \
+        [dict create role assistant content inspected]]
+    try {
+        $agent replaceHistory $history
+        $agent run follow-up
+        set request [lindex [lindex [$client getCalls] 0] 1]
+        list \
+            [lmap message $request {dict get $message role}] \
+            [dict get [lindex $request 0] content] \
+            [llength [$agent getHistory]]
+    } finally {
+        $agent destroy
+        $client destroy
+    }
+} -result [list \
+    [list user assistant tool assistant user] \
+    inspect \
+    8]
+
+test agent-history-1.5 {excluded history and summary state are tracked} -body {
+    set client [::FakeLLMClient new]
+    set agent [::tAgent new \
+        TestAgent "Test system role" $client "" 8 "" 4 true]
+    set messages [list \
+        [dict create role user content first] \
+        [dict create role assistant content one] \
+        [dict create role user content second] \
+        [dict create role assistant content two] \
+        [dict create role user content third] \
+        [dict create role assistant content three]]
+    try {
+        $agent replaceHistoryState [dict create \
+            messages $messages summary "First turn summary" \
+            summarized_messages 2]
+        list \
+            [lmap message [$agent getExcludedHistory] {
+                dict get $message content
+            }] \
+            [$agent getHistoryState] \
+            [$agent summarizesHistory]
+    } finally {
+        $agent destroy
+        $client destroy
+    }
+} -result [list \
+    [list first one] \
+    [dict create messages [list \
+        [dict create role user content first] \
+        [dict create role assistant content one] \
+        [dict create role user content second] \
+        [dict create role assistant content two] \
+        [dict create role user content third] \
+        [dict create role assistant content three]] \
+        summary "First turn summary" summarized_messages 2] \
+    1]
+
+test agent-loop-1.1 {agent executes a plugin and returns the final answer} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    set arguments [::json::write object \
+        path [::json::write string "main.tcl"]]
+    set toolCall [dict create \
+        id "call_read" \
+        type "function" \
+        function [dict create name read_file arguments $arguments]]
+    set client [::StructuredFakeLLMClient new [list \
+        [dict create \
+            role assistant \
+            content "" \
+            reasoning_content "I should inspect main.tcl." \
+            tool_calls [list $toolCall]] \
+        [dict create role assistant content "Inspection complete."]]]
+    set agent [::tAgent new \
+        TestAgent "Test system role" $client $registry 4]
+
+    try {
+        set answer [$agent run "Inspect main.tcl"]
+        set calls [$client getCalls]
+        set secondMessages [lindex [lindex $calls 1] 1]
+        set toolResult [lindex $secondMessages end]
+
+        list \
+            $answer \
+            [llength $calls] \
+            [lmap definition [lindex [lindex $calls 0] 2] {
+                dict get $definition name
+            }] \
+            [dict get [lindex $secondMessages 1] reasoning_content] \
+            [dict get $toolResult role] \
+            [dict get $toolResult tool_call_id] \
+            [expr {[string first "proc ::main" \
+                [dict get $toolResult content]] >= 0}] \
+            [llength [$agent getHistory]]
+    } finally {
+        $agent destroy
+        $client destroy
+        $registry destroy
+    }
+} -result [list \
+    "Inspection complete." \
+    2 \
+    [list apply_patch copy_file delete_file edit_file file_info fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_files make_directory move_file oodz_lookup oodz_read oodz_search read_file save_translation search_files write_file xml_validate] \
+    "I should inspect main.tcl." \
+    tool \
+    call_read \
+    1 \
+    4]
+
+test agent-loop-1.2 {tool-loop requests are re-bounded each iteration} -body {
+    set firstCall [dict create id call_1 type function function [dict create \
+        name list_files arguments {{}}]]
+    set secondCall [dict create id call_2 type function function [dict create \
+        name list_files arguments {{}}]]
+    set client [::StructuredFakeLLMClient new [list \
+        [dict create role assistant content "" tool_calls [list $firstCall]] \
+        [dict create role assistant content "" tool_calls [list $secondCall]] \
+        [dict create role assistant content done]]]
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    set agent [::tAgent new \
+        TestAgent "Test system role" $client $registry 4 "" 4]
+    set oldHistory [list \
+        [dict create role user content old-one] \
+        [dict create role assistant content answer-one] \
+        [dict create role user content old-two] \
+        [dict create role assistant content answer-two]]
+    try {
+        $agent replaceHistory $oldHistory
+        $agent run current
+        set calls [$client getCalls]
+        list \
+            [lmap call $calls {llength [lindex $call 1]}] \
+            [lmap message [lindex [lindex $calls end] 1] {
+                dict get $message role
+            }] \
+            [llength [$agent getHistory]]
+    } finally {
+        $agent destroy
+        $registry destroy
+        $client destroy
+    }
+} -result [list \
+    [list 3 3 5] \
+    [list user assistant tool assistant tool] \
+    10]
+
+test agent-loop-lazy-1.1 {agent refreshes definitions after plugin search} -body {
+    set searchArguments [::json::write object \
+        query [::json::write string xml_validate] limit 1]
+    set searchCall [dict create id call_search type function function \
+        [dict create name search_plugins arguments $searchArguments]]
+    set client [::StructuredFakeLLMClient new [list \
+        [dict create role assistant content "" tool_calls [list $searchCall]] \
+        [dict create role assistant content "Plugin activated."]]]
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" "" true [list read_file]]
+    set agent [::tAgent new TestAgent "Test system role" $client $registry 3]
+    try {
+        set answer [$agent run "Find an XML validation tool"]
+        set calls [$client getCalls]
+        set firstDefinitions [lmap definition [lindex [lindex $calls 0] 2] {
+            dict get $definition name
+        }]
+        set secondDefinitions [lmap definition [lindex [lindex $calls 1] 2] {
+            dict get $definition name
+        }]
+        list $answer $firstDefinitions $secondDefinitions
+    } finally {
+        $agent destroy
+        $registry destroy
+        $client destroy
+    }
+} -result [list \
+    "Plugin activated." \
+    [list read_file search_plugins] \
+    [list read_file search_plugins xml_validate]]
+
+test agent-loop-1.2 {agent stops at the configured iteration limit} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    set arguments [::json::write object]
+    set toolCall [dict create \
+        id "call_list" \
+        type "function" \
+        function [dict create name list_files arguments $arguments]]
+    set response [dict create \
+        role assistant content "" tool_calls [list $toolCall]]
+    set client [::StructuredFakeLLMClient new [list $response $response]]
+    set agent [::tAgent new \
+        TestAgent "Test system role" $client $registry 2]
+
+    try {
+        set runResult [catch {
+            $agent run "Keep listing files"
+        } runMessage]
+        list \
+            $runResult $runMessage \
+            [llength [$client getCalls]] \
+            [$agent getHistory]
+    } finally {
+        $agent destroy
+        $client destroy
+        $registry destroy
+    }
+} -result [list \
+    1 "Agent exceeded maximum iterations: 2" \
+    2 [list \
+        [dict create role user content "Keep listing files"] \
+        [dict create role assistant content \
+            "The previous task ended before a final response: Agent exceeded maximum iterations: 2"]]]
+
+
+::finishTests

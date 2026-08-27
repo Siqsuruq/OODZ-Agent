@@ -1,0 +1,64 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test fossil-pull-1.1 {Fossil pull uses only the configured remote} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-pull-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_pull [::json::write object]
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_pull [::json::write object]]
+        set call [lindex $::RunnerMock::calls 0]
+        list $deniedCode $deniedMessage $result \
+            [lrange [lindex $call 0] 1 end]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_pull" \
+    "sandboxed Tcl output" [list pull]]
+
+test fossil-push-1.1 {Fossil push uses only the configured remote} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-push-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_push [::json::write object]
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_push [::json::write object]]
+        set call [lindex $::RunnerMock::calls 0]
+        list $deniedCode $deniedMessage $result \
+            [lrange [lindex $call 0] 1 end]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_push" \
+    "sandboxed Tcl output" [list push]]
+
+
+::finishTests

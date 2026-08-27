@@ -1,0 +1,109 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test fossil-integration-1.1 {Fossil plugins operate on a real checkout} \
+        -constraints fossilAvailable -body {
+    set base [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-integration-[pid]]]
+    set root [file join $base checkout]
+    set repository [file join $base integration.fossil]
+    file delete -force $base
+    file mkdir $root
+    set hadXdgConfigHome [info exists ::env(XDG_CONFIG_HOME)]
+    if {$hadXdgConfigHome} {
+        set previousXdgConfigHome $::env(XDG_CONFIG_HOME)
+    }
+    set ::env(XDG_CONFIG_HOME) [file join $base config]
+    file mkdir $::env(XDG_CONFIG_HOME)
+    exec fossil init $repository 2>@1
+    set previousDirectory [pwd]
+    try {
+        cd $root
+        exec fossil open $repository 2>@1
+    } finally {
+        cd $previousDirectory
+    }
+    set channel [open [file join $root hello.tcl] w]
+    puts $channel {puts "real Fossil integration"}
+    close $channel
+
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 10000 65536]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    try {
+        set ::ApprovalMock::approved 1
+        set extras [$plugins invoke fossil_extras [::json::write object]]
+        $plugins invoke fossil_add [::json::write object \
+            path [::json::write string hello.tcl]]
+        set changes [$plugins invoke fossil_changes [::json::write object]]
+        $plugins invoke fossil_commit [::json::write object \
+            message [::json::write string \
+                "Exercise the real Fossil plugin workflow"]]
+        set cleanChanges \
+            [$plugins invoke fossil_changes [::json::write object]]
+        set channel [open [file join $root hello.tcl] a]
+        puts $channel {puts "stashed change"}
+        close $channel
+        $plugins invoke fossil_stash_save [::json::write object \
+            comment [::json::write string "Integration test stash"]]
+        set stashList [$plugins invoke fossil_stash_list \
+            [::json::write object]]
+        set stashedChanges \
+            [$plugins invoke fossil_changes [::json::write object]]
+        $plugins invoke fossil_stash_pop [::json::write object]
+        set poppedChanges \
+            [$plugins invoke fossil_changes [::json::write object]]
+        $plugins invoke fossil_revert [::json::write object \
+            path [::json::write string hello.tcl]]
+        $plugins invoke fossil_branch_new [::json::write object \
+            name [::json::write string integration-test] \
+            basis [::json::write string trunk]]
+        set branchInfo [$plugins invoke fossil_branch_info \
+            [::json::write object \
+                name [::json::write string integration-test]]]
+        $plugins invoke fossil_branch_switch [::json::write object \
+            name [::json::write string integration-test]]
+        set status [$plugins invoke fossil_status [::json::write object]]
+        $plugins invoke fossil_branch_close [::json::write object \
+            name [::json::write string integration-test]]
+        $plugins invoke fossil_branch_reopen [::json::write object \
+            name [::json::write string integration-test]]
+        set channel [open [file join $root hello.tcl] a]
+        puts $channel {puts "branch-only change"}
+        close $channel
+        $plugins invoke fossil_commit [::json::write object \
+            message [::json::write string \
+                "Add a branch-only integration change"]]
+        $plugins invoke fossil_branch_switch [::json::write object \
+            name [::json::write string trunk]]
+        $plugins invoke fossil_merge [::json::write object \
+            source [::json::write string integration-test]]
+        set mergedChanges \
+            [$plugins invoke fossil_changes [::json::write object]]
+        list \
+            [expr {[string first "hello.tcl" $extras] >= 0}] \
+            [expr {[string first "hello.tcl" $changes] >= 0}] \
+            [expr {[string trim $cleanChanges] eq "(none)"}] \
+            [expr {[string first "Integration test stash" $stashList] >= 0}] \
+            [expr {[string trim $stashedChanges] eq "(none)"}] \
+            [expr {[string first "hello.tcl" $poppedChanges] >= 0}] \
+            [expr {[string first "integration-test" $branchInfo] >= 0}] \
+            [expr {[string first "integration-test" $status] >= 0}] \
+            [expr {[string first "hello.tcl" $mergedChanges] >= 0}]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        if {$hadXdgConfigHome} {
+            set ::env(XDG_CONFIG_HOME) $previousXdgConfigHome
+        } else {
+            unset ::env(XDG_CONFIG_HOME)
+        }
+        file delete -force $base
+    }
+} -result [list 1 1 1 1 1 1 1 1 1]
+
+
+::finishTests

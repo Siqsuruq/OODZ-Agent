@@ -1,0 +1,344 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test fossil-stash-1.1 {Fossil stash tools are bounded and approved} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-stash-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set saveArguments [::json::write object comment \
+        [::json::write string "Pause account form work"]]
+    try {
+        set listResult [$plugins invoke fossil_stash_list \
+            [::json::write object]]
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_stash_save $saveArguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set saveResult [$plugins invoke fossil_stash_save $saveArguments]
+        set popResult [$plugins invoke fossil_stash_pop \
+            [::json::write object]]
+        set emptyCode [catch {
+            $plugins invoke fossil_stash_save [::json::write object \
+                comment [::json::write string "  "]]
+        } emptyMessage]
+        list $listResult $deniedCode $deniedMessage \
+            $saveResult $popResult \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            [lrange [lindex [lindex $::RunnerMock::calls 1] 0] 1 end] \
+            [lrange [lindex [lindex $::RunnerMock::calls 2] 0] 1 end] \
+            $emptyCode $emptyMessage
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    "sandboxed Tcl output" \
+    1 "Plugin execution denied: fossil_stash_save" \
+    "sandboxed Tcl output" "sandboxed Tcl output" \
+    [list stash list --verbose] \
+    [list stash save --comment "Pause account form work"] \
+    [list stash pop] \
+    1 "fossil_stash_save comment must not be empty"]
+
+test fossil-add-1.1 {Fossil add is approved and file-confined} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-add-[pid]]]
+    file mkdir [file join $root src]
+    set channel [open [file join $root src new.tcl] w]
+    puts $channel {puts new}
+    close $channel
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set arguments [::json::write object path \
+        [::json::write string src/new.tcl]]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_add $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_add $arguments]
+        set directoryCode [catch {
+            $plugins invoke fossil_add [::json::write object path \
+                [::json::write string src]]
+        } directoryMessage]
+        set escapeCode [catch {
+            $plugins invoke fossil_add [::json::write object path \
+                [::json::write string ../outside.tcl]]
+        } escapeMessage]
+        list \
+            $deniedCode $deniedMessage \
+            $result \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            $directoryCode $directoryMessage \
+            $escapeCode $escapeMessage
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_add" \
+    "sandboxed Tcl output" [list add -- src/new.tcl] \
+    1 "fossil_add path is not an existing file: src" \
+    1 "Plugin path escapes the workspace"]
+
+test fossil-commit-1.1 {Fossil commit is approved local and bounded} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-commit-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set arguments [::json::write object message \
+        [::json::write string "Add account class safely"]]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_commit $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_commit $arguments]
+        set emptyCode [catch {
+            $plugins invoke fossil_commit [::json::write object message \
+                [::json::write string "   "]]
+        } emptyMessage]
+        set longCode [catch {
+            $plugins invoke fossil_commit [::json::write object message \
+                [::json::write string [string repeat x 1001]]]
+        } longMessage]
+        list \
+            $deniedCode $deniedMessage \
+            $result \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            $emptyCode $emptyMessage $longCode $longMessage
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_commit" \
+    "sandboxed Tcl output" \
+    [list commit --nosync --no-prompt -m "Add account class safely"] \
+    1 "fossil_commit message must not be empty" \
+    1 "fossil_commit message exceeds configured limit: 1000"]
+
+test fossil-revert-1.1 {Fossil revert is approved and file-confined} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-revert-[pid]]]
+    file mkdir [file join $root src]
+    set channel [open [file join $root src client.tcl] w]
+    puts $channel {puts changed}
+    close $channel
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set arguments [::json::write object path \
+        [::json::write string src/client.tcl]]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_revert $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_revert $arguments]
+        set directoryCode [catch {
+            $plugins invoke fossil_revert [::json::write object path \
+                [::json::write string src]]
+        } directoryMessage]
+        set escapeCode [catch {
+            $plugins invoke fossil_revert [::json::write object path \
+                [::json::write string ../outside.tcl]]
+        } escapeMessage]
+        list \
+            $deniedCode $deniedMessage \
+            $result \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            $directoryCode $directoryMessage \
+            $escapeCode $escapeMessage
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_revert" \
+    "sandboxed Tcl output" [list revert -- src/client.tcl] \
+    1 "fossil_revert path is not an existing file: src" \
+    1 "Plugin path escapes the workspace"]
+
+test fossil-update-1.1 {Fossil update is approved fixed and local} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-update-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set arguments [::json::write object]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_update $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_update $arguments]
+        set call [lindex $::RunnerMock::calls 0]
+        list \
+            $deniedCode $deniedMessage $result \
+            [file tail [lindex [lindex $call 0] 0]] \
+            [lrange [lindex $call 0] 1 end] \
+            [lindex $call 1] [lindex $call 2]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_update" \
+    "sandboxed Tcl output" fossil [list update --nosync] 2500 4096]
+
+test fossil-undo-1.1 {Fossil undo is approved and path-confined} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-undo-[pid]]]
+    file mkdir [file join $root src]
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set arguments [::json::write object path \
+        [::json::write string src/deleted.tcl]]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_undo $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_undo $arguments]
+        set escapeCode [catch {
+            $plugins invoke fossil_undo [::json::write object path \
+                [::json::write string ../outside.tcl]]
+        } escapeMessage]
+        list \
+            $deniedCode $deniedMessage $result \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            $escapeCode $escapeMessage
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_undo" \
+    "sandboxed Tcl output" [list undo -- src/deleted.tcl] \
+    1 "Plugin path escapes the workspace"]
+
+test fossil-redo-1.1 {Fossil redo is approved and path-confined} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-redo-[pid]]]
+    file mkdir [file join $root src]
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set arguments [::json::write object path \
+        [::json::write string src/deleted.tcl]]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_redo $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_redo $arguments]
+        set escapeCode [catch {
+            $plugins invoke fossil_redo [::json::write object path \
+                [::json::write string ../outside.tcl]]
+        } escapeMessage]
+        list \
+            $deniedCode $deniedMessage $result \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            $escapeCode $escapeMessage
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_redo" \
+    "sandboxed Tcl output" [list redo -- src/deleted.tcl] \
+    1 "Plugin path escapes the workspace"]
+
+test fossil-remove-1.1 {Fossil remove is approved hard and file-confined} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-remove-[pid]]]
+    file mkdir [file join $root src]
+    set channel [open [file join $root src obsolete.tcl] w]
+    puts $channel {puts obsolete}
+    close $channel
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set arguments [::json::write object path \
+        [::json::write string src/obsolete.tcl]]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_remove $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_remove $arguments]
+        set directoryCode [catch {
+            $plugins invoke fossil_remove [::json::write object path \
+                [::json::write string src]]
+        } directoryMessage]
+        set escapeCode [catch {
+            $plugins invoke fossil_remove [::json::write object path \
+                [::json::write string ../outside.tcl]]
+        } escapeMessage]
+        list \
+            $deniedCode $deniedMessage $result \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            $directoryCode $directoryMessage \
+            $escapeCode $escapeMessage
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: fossil_remove" \
+    "sandboxed Tcl output" [list rm --hard -- src/obsolete.tcl] \
+    1 "fossil_remove path is not an existing file: src" \
+    1 "Plugin path escapes the workspace"]
+
+
+::finishTests

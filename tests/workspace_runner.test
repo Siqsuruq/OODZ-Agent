@@ -1,0 +1,370 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test startup-paths-1.1 {main loads outside the project directory} -body {
+    set originalDirectory [pwd]
+    set child [interp create]
+
+    try {
+        cd [file dirname $projectDir]
+        $child eval [list source [file join $projectDir main.tcl]]
+        $child eval {expr {
+            [llength [info commands ::main]] == 1
+            && [llength [info commands ::tAgent]] == 1
+            && [llength [info commands ::tLLMClient]] == 1
+        }}
+    } finally {
+        cd $originalDirectory
+        interp delete $child
+    }
+} -result 1
+
+test workspace-root-1.1 {workspace root supports relative and absolute paths} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-workspace-test-[pid]-[clock clicks]"]
+    file mkdir [file join $temporaryRoot relative]
+    try {
+        set relative [::resolveWorkspaceRoot $temporaryRoot relative]
+        set absolute [::resolveWorkspaceRoot \
+            $projectDir [file join $temporaryRoot relative]]
+        set missingCode [catch {
+            ::resolveWorkspaceRoot $temporaryRoot missing
+        } missingMessage]
+        set emptyCode [catch {
+            ::resolveWorkspaceRoot $temporaryRoot "  "
+        } emptyMessage]
+        list \
+            [expr {$relative eq [file join $temporaryRoot relative]}] \
+            [expr {$absolute eq $relative}] \
+            $missingCode $missingMessage \
+            $emptyCode $emptyMessage
+    } finally {
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    1 1 \
+    1 "Workspace.root is not a directory: missing" \
+    1 "Workspace.root must not be empty"]
+
+test plugin-directories-1.1 {personal plugin roots support relative and absolute paths} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-plugin-roots-test-[pid]-[clock clicks]"]
+    set relativePath [file join $temporaryRoot personal]
+    set absolutePath [file join [temporaryDirectory] \
+        "oodz-absolute-plugins-test-[pid]-[clock clicks]"]
+    file mkdir $relativePath $absolutePath
+    try {
+        set directories [::resolvePluginDirectories $temporaryRoot \
+            "personal, $absolutePath, personal"]
+        set missingCode [catch {
+            ::resolvePluginDirectories $temporaryRoot missing
+        } missingMessage]
+        list \
+            [llength $directories] \
+            [expr {[lindex $directories 0] eq \
+                [file join $temporaryRoot plugins]}] \
+            [expr {[lindex $directories 1] eq $relativePath}] \
+            [expr {[lindex $directories 2] eq $absolutePath}] \
+            $missingCode $missingMessage
+    } finally {
+        file delete -force $temporaryRoot $absolutePath
+    }
+} -result [list \
+    3 1 1 1 \
+    1 "Plugin directory does not exist: missing"]
+
+test workspace-instructions-1.1 {workspace instructions are confined bounded UTF-8} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-instructions-test-[pid]-[clock clicks]"]
+    file mkdir [file join $temporaryRoot docs]
+    set validPath [file join $temporaryRoot docs PROJECT.md]
+    set validChannel [open $validPath wb]
+    puts -nonewline $validChannel \
+        [encoding convertto utf-8 "Use NX classes.\nPrefer ::oodz::baseObj."]
+    close $validChannel
+    set largePath [file join $temporaryRoot large.md]
+    set largeChannel [open $largePath wb]
+    puts -nonewline $largeChannel [string repeat x 17]
+    close $largeChannel
+    set invalidPath [file join $temporaryRoot invalid.md]
+    set invalidChannel [open $invalidPath wb]
+    puts -nonewline $invalidChannel [binary format H* ff]
+    close $invalidChannel
+
+    try {
+        set loaded [::loadWorkspaceInstructions \
+            $temporaryRoot docs/PROJECT.md]
+        set disabled [::loadWorkspaceInstructions $temporaryRoot ""]
+        set absoluteCode [catch {
+            ::loadWorkspaceInstructions $temporaryRoot $validPath
+        } absoluteMessage]
+        set escapeCode [catch {
+            ::loadWorkspaceInstructions $temporaryRoot ../outside.md
+        } escapeMessage]
+        set missingCode [catch {
+            ::loadWorkspaceInstructions $temporaryRoot missing.md
+        } missingMessage]
+        set largeCode [catch {
+            ::loadWorkspaceInstructions $temporaryRoot large.md 16
+        } largeMessage]
+        set invalidCode [catch {
+            ::loadWorkspaceInstructions $temporaryRoot invalid.md
+        } invalidMessage]
+        list \
+            $loaded $disabled \
+            $absoluteCode $absoluteMessage \
+            $escapeCode $escapeMessage \
+            $missingCode $missingMessage \
+            $largeCode $largeMessage \
+            $invalidCode $invalidMessage
+    } finally {
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    "Use NX classes.\nPrefer ::oodz::baseObj." "" \
+    1 "Workspace.instructions must be relative to the workspace" \
+    1 "Workspace instruction file escapes the workspace" \
+    1 "Workspace instruction file does not exist: missing.md" \
+    1 "Workspace instruction file exceeds 16 bytes: large.md" \
+    1 "Workspace instruction file is not valid UTF-8: invalid.md"]
+
+test workspace-confinement-1.1 {path confinement compares complete components} -body {
+    set root [file normalize [file join [temporaryDirectory] workspace]]
+    list \
+        [::PluginSupport::isWithin $root $root] \
+        [::PluginSupport::isWithin [file join $root modules tax] $root] \
+        [::PluginSupport::isWithin "${root}-other" $root] \
+        [::PluginSupport::isWithin [file dirname $root] $root]
+} -result {1 1 0 0}
+
+test hierarchical-instructions-1.1 {closest instruction files load in order} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] instructions-[pid]]]
+    file mkdir [file join $root modules report nested]
+    foreach {relative content} {
+        AGENT.md {Root rules}
+        modules/report/AGENT.md {Report rules}
+        modules/report/nested/AGENT.md {Nested rules}
+    } {
+        set channel [open [file join $root $relative] w]
+        fconfigure $channel -encoding utf-8
+        puts $channel $content
+        close $channel
+    }
+    set registry [::tInstructionRegistry new $root AGENT.md]
+    try {
+        set loaded [$registry loadForPath \
+            modules/report/nested/new_file.tcl]
+        set escapeCode [catch {
+            $registry loadForPath ../outside.tcl
+        } escapeMessage]
+        list \
+            [expr {[string first "## AGENT.md" $loaded] < 0}] \
+            [expr {[string first "## modules/report/AGENT.md" $loaded] \
+                < [string first \
+                    "## modules/report/nested/AGENT.md" $loaded]}] \
+            $escapeCode $escapeMessage
+    } finally {
+        $registry destroy
+        file delete -force $root
+    }
+} -result [list 1 1 1 \
+    "Instruction target path escapes the workspace"]
+
+test hierarchical-instructions-1.2 {instruction tool is model-visible} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] instruction-tool-[pid]]]
+    file mkdir [file join $root module]
+    foreach {relative content} {
+        AGENT.md {Root instructions}
+        module/AGENT.md {Module instructions}
+    } {
+        set channel [open [file join $root $relative] w]
+        puts $channel $content
+        close $channel
+    }
+    set instructions [::tInstructionRegistry new $root AGENT.md]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" $instructions]
+    try {
+        set loaded [$plugins invoke load_project_instructions \
+            [::json::write object path \
+                [::json::write string module/file.tcl]]]
+        list \
+            [expr {"load_project_instructions" in [$plugins names]}] \
+            [expr {[string first "Module instructions" $loaded] >= 0}]
+    } finally {
+        $plugins destroy
+        $instructions destroy
+        file delete -force $root
+    }
+} -result [list 1 1]
+
+test process-runner-1.1 {Tcl runner builds one portable direct command} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] process-runner-[pid]]]
+    file mkdir $root
+    set channel [open [file join $root hello.tcl] w]
+    puts $channel {puts hello}
+    close $channel
+    set channel [open [file join $root hello.txt] w]
+    puts $channel hello
+    close $channel
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    try {
+        set result [$runner runTclFile hello.tcl]
+        set command [lindex [lindex $::RunnerMock::calls 0] 0]
+        $runner configureProjectTests \
+            tclsh9.0 {tests/all.tcl -verbose body} 60000
+        set projectResult [$runner runProjectTests]
+        set projectCall [lindex $::RunnerMock::calls 1]
+        set escapeCode [catch {
+            $runner runTclFile ../outside.tcl
+        } escapeMessage]
+        set extensionCode [catch {
+            $runner runTclFile hello.txt
+        } extensionMessage]
+        list \
+            $result \
+            [$runner mode] \
+            [expr {[lindex $command end] eq \
+                [file join $root hello.tcl]}] \
+            [lindex [lindex $::RunnerMock::calls 0] 1] \
+            [lindex [lindex $::RunnerMock::calls 0] 2] \
+            $projectResult \
+            [lrange [lindex $projectCall 0] 1 end] \
+            [lindex $projectCall 1] \
+            $escapeCode $escapeMessage \
+            $extensionCode $extensionMessage
+    } finally {
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    [dict create status exited exit_code 0 output "sandboxed Tcl output" \
+        duration_ms 1 timed_out false output_truncated false] \
+    direct 1 2500 4096 \
+    [dict create status exited exit_code 0 output "sandboxed Tcl output" \
+        duration_ms 1 timed_out false output_truncated false] \
+    {tests/all.tcl -verbose body} 60000 \
+    1 "Plugin path escapes the workspace" \
+    1 "Tcl runner accepts only .tcl files"]
+
+test process-runner-1.1a {configured executable alias controls plugin commands} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] executable-alias-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set configuredPath [file normalize [info nameofexecutable]]
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 \
+        ::RunnerMock::execute [dict create fossil $configuredPath]]
+    try {
+        set result [$runner runConfiguredCommand fossil [list version]]
+        set call [lindex $::RunnerMock::calls 0]
+        list \
+            $result \
+            [expr {[lindex [lindex $call 0] 0] eq $configuredPath}] \
+            [lrange [lindex $call 0] 1 end]
+    } finally {
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    [dict create status exited exit_code 0 output "sandboxed Tcl output" \
+        duration_ms 1 timed_out false output_truncated false] \
+    1 [list version]]
+
+test process-runner-1.1b {process results distinguish exit timeout and output limit} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] process-results-[pid]]]
+    file mkdir $root
+    foreach {name script} {
+        fail.tcl {puts stderr failure; exit 7}
+        slow.tcl {after 500; puts late}
+        noisy.tcl {puts [string repeat x 100]}
+    } {
+        set channel [open [file join $root $name] w]
+        puts $channel $script
+        close $channel
+    }
+    set runner [::tProcessRunner new $root tclsh9.0 100 32]
+    try {
+        set failed [$runner runTclFile fail.tcl]
+        set timedOut [$runner runTclFile slow.tcl]
+        set limited [$runner runTclFile noisy.tcl]
+        list \
+            [dict get $failed status] \
+            [dict get $failed exit_code] \
+            [dict get $failed output] \
+            [dict get $failed timed_out] \
+            [dict get $timedOut status] \
+            [dict get $timedOut timed_out] \
+            [expr {[dict get $timedOut duration_ms] >= 50}] \
+            [dict get $limited status] \
+            [dict get $limited output_truncated] \
+            [string length [dict get $limited output]]
+    } finally {
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list failed 7 failure 0 timeout 1 1 \
+    output_limit 1 32]
+
+test process-runner-1.2 {Tcl execution is model-visible and approved} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] process-tool-[pid]]]
+    file mkdir $root
+    set channel [open [file join $root hello.tcl] w]
+    puts $channel {puts hello}
+    close $channel
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    $runner configureProjectTests tclsh9.0 tests/all.tcl 60000
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set config [::FakeConfig new [dict create LLM.api_key test-only-key]]
+    set client [::tLLMClient new $config]
+    set arguments [::json::write object path \
+        [::json::write string hello.tcl]]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke run_tcl_file $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke run_tcl_file $arguments]
+        set projectResult [$plugins invoke run_project_tests \
+            [::json::write object]]
+        set payload [::json::json2dict [$client buildPayload \
+            system [list [dict create role user content test]] \
+            [$plugins definitions]]]
+        set parameterType ""
+        foreach definition [dict get $payload tools] {
+            if {[dict get $definition function name] eq "run_tcl_file"} {
+                set parameterType \
+                    [dict get $definition function parameters type]
+            }
+        }
+        list \
+            [expr {"run_tcl_file" in [$plugins names]}] \
+            [expr {"run_project_tests" in [$plugins names]}] \
+            $deniedCode $deniedMessage $result $projectResult $parameterType
+    } finally {
+        $client destroy
+        $config destroy
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 1 1 "Plugin execution denied: run_tcl_file" \
+    "sandboxed Tcl output" "sandboxed Tcl output" object]
+
+
+::finishTests

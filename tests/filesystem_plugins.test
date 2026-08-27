@@ -1,0 +1,365 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test write-file-1.1 {write_file requires approval and writes exact content} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-write-test-[pid]-[clock clicks]"]
+    file mkdir $temporaryRoot
+    set registry [::tPluginRegistry new \
+        $temporaryRoot \
+        [list [file join $projectDir plugins]] \
+        [list ::ApprovalMock::decide]]
+    set arguments [::json::write object \
+        path [::json::write string "created.txt"] \
+        content [::json::write string "hello café\n"]]
+
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedResult [catch {
+            $registry invoke write_file $arguments
+        } deniedMessage]
+        set existsAfterDenial [file exists \
+            [file join $temporaryRoot created.txt]]
+
+        set ::ApprovalMock::approved 1
+        set approvedResult [$registry invoke write_file $arguments]
+        set channel [open [file join $temporaryRoot created.txt] r]
+        try {
+            fconfigure $channel -encoding utf-8
+            set writtenContent [read $channel]
+        } finally {
+            close $channel
+        }
+
+        list \
+            $deniedResult $deniedMessage $existsAfterDenial \
+            $approvedResult $writtenContent
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    1 "Plugin execution denied: write_file" 0 \
+    "Wrote file: created.txt" "hello café\n"]
+
+test make-directory-1.1 {make_directory is approved, recursive, and confined} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-mkdir-test-[pid]-[clock clicks]"]
+    file mkdir $temporaryRoot
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]] \
+        [list ::ApprovalMock::decide]]
+    set nestedArguments [::json::write object \
+        path [::json::write string "nested/deep"]]
+    set escapeArguments [::json::write object \
+        path [::json::write string "../outside"]]
+    set occupiedPath [file join $temporaryRoot occupied]
+    set occupiedChannel [open $occupiedPath w]
+    close $occupiedChannel
+    set occupiedArguments [::json::write object \
+        path [::json::write string occupied]]
+
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $registry invoke make_directory $nestedArguments
+        } deniedMessage]
+        set existsAfterDenial [file exists \
+            [file join $temporaryRoot nested]]
+
+        set ::ApprovalMock::approved 1
+        set created [$registry invoke make_directory $nestedArguments]
+        set nestedExists [file isdirectory \
+            [file join $temporaryRoot nested deep]]
+        set repeated [$registry invoke make_directory $nestedArguments]
+        set escapeCode [catch {
+            $registry invoke make_directory $escapeArguments
+        } escapeMessage]
+        set occupiedCode [catch {
+            $registry invoke make_directory $occupiedArguments
+        } occupiedMessage]
+
+        list \
+            $deniedCode $deniedMessage $existsAfterDenial \
+            $created $nestedExists $repeated \
+            $escapeCode $escapeMessage \
+            $occupiedCode $occupiedMessage
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    1 "Plugin execution denied: make_directory" 0 \
+    "Created directory: nested/deep" 1 \
+    "Directory already exists: nested/deep" \
+    1 "Plugin path escapes the workspace" \
+    1 "Target exists and is not a directory: occupied"]
+
+test edit-file-1.1 {edit_file performs one approved exact replacement} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-edit-test-[pid]-[clock clicks]"]
+    file mkdir $temporaryRoot
+    set target [file join $temporaryRoot sample.txt]
+    set channel [open $target w]
+    fconfigure $channel -encoding utf-8
+    puts -nonewline $channel "alpha\ncafé\nomega\n"
+    close $channel
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]] \
+        [list ::ApprovalMock::decide]]
+    set exactArguments [::json::write object \
+        path [::json::write string sample.txt] \
+        old_text [::json::write string "café"] \
+        new_text [::json::write string "edited"]]
+
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $registry invoke edit_file $exactArguments
+        } deniedMessage]
+
+        set ::ApprovalMock::approved 1
+        set edited [$registry invoke edit_file $exactArguments]
+        set channel [open $target r]
+        fconfigure $channel -encoding utf-8
+        set content [read $channel]
+        close $channel
+
+        set missingCode [catch {
+            $registry invoke edit_file [::json::write object \
+                path [::json::write string sample.txt] \
+                old_text [::json::write string absent] \
+                new_text [::json::write string replacement]]
+        } missingMessage]
+
+        set channel [open $target w]
+        puts -nonewline $channel "same same"
+        close $channel
+        set ambiguousCode [catch {
+            $registry invoke edit_file [::json::write object \
+                path [::json::write string sample.txt] \
+                old_text [::json::write string same] \
+                new_text [::json::write string changed]]
+        } ambiguousMessage]
+
+        list \
+            $deniedCode $deniedMessage \
+            $edited $content \
+            $missingCode $missingMessage \
+            $ambiguousCode $ambiguousMessage
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    1 "Plugin execution denied: edit_file" \
+    "Edited file: sample.txt" "alpha\nedited\nomega\n" \
+    1 "old_text was not found in: sample.txt" \
+    1 "old_text appears more than once in: sample.txt"]
+
+test filesystem-mutations-1.1 {copy, move, and delete files safely} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-mutations-test-[pid]-[clock clicks]"]
+    file mkdir [file join $temporaryRoot nested]
+    set source [file join $temporaryRoot source.txt]
+    set channel [open $source w]
+    puts -nonewline $channel "original"
+    close $channel
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]] \
+        [list ::ApprovalMock::decide]]
+    set copyArguments [::json::write object \
+        source [::json::write string source.txt] \
+        destination [::json::write string nested/copied.txt]]
+    set moveArguments [::json::write object \
+        source [::json::write string nested/copied.txt] \
+        destination [::json::write string moved.txt]]
+    set deleteArguments [::json::write object \
+        path [::json::write string moved.txt]]
+
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $registry invoke copy_file $copyArguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set copied [$registry invoke copy_file $copyArguments]
+        set overwriteCode [catch {
+            $registry invoke copy_file $copyArguments
+        } overwriteMessage]
+        set moved [$registry invoke move_file $moveArguments]
+        set deleted [$registry invoke delete_file $deleteArguments]
+        set directoryCode [catch {
+            $registry invoke delete_file [::json::write object \
+                path [::json::write string nested]]
+        } directoryMessage]
+
+        list $deniedCode $deniedMessage \
+            $copied $overwriteCode $overwriteMessage \
+            $moved [file exists [file join $temporaryRoot nested copied.txt]] \
+            $deleted [file exists [file join $temporaryRoot moved.txt]] \
+            $directoryCode $directoryMessage
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    1 "Plugin execution denied: copy_file" \
+    "Copied file: source.txt -> nested/copied.txt" \
+    1 "Destination already exists: nested/copied.txt" \
+    "Moved file: nested/copied.txt -> moved.txt" 0 \
+    "Deleted file: moved.txt" 0 \
+    1 "Path is not a file: nested"]
+
+test apply-patch-1.1 {apply_patch makes multiple exact changes atomically} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-patch-test-[pid]-[clock clicks]"]
+    file mkdir $temporaryRoot
+    set target [file join $temporaryRoot sample.txt]
+    set channel [open $target w]
+    puts -nonewline $channel "alpha\nbeta\ngamma\n"
+    close $channel
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]] \
+        [list ::ApprovalMock::decide]]
+    set patchText "<<<<<<< SEARCH\nalpha\n=======\nfirst\n>>>>>>> REPLACE\n<<<<<<< SEARCH\ngamma\n=======\nthird\n>>>>>>> REPLACE"
+    set arguments [::json::write object \
+        path [::json::write string sample.txt] \
+        patch [::json::write string $patchText]]
+
+    try {
+        set ::ApprovalMock::approved 1
+        set result [$registry invoke apply_patch $arguments]
+        set channel [open $target r]
+        set content [read $channel]
+        close $channel
+        set badPatch "<<<<<<< SEARCH\nmissing\n=======\nchanged\n>>>>>>> REPLACE"
+        set failedCode [catch {
+            $registry invoke apply_patch [::json::write object \
+                path [::json::write string sample.txt] \
+                patch [::json::write string $badPatch]]
+        } failedMessage]
+        set channel [open $target r]
+        set contentAfterFailure [read $channel]
+        close $channel
+        list $result $content $failedCode $failedMessage $contentAfterFailure
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    "Applied patch to: sample.txt (2 change(s))" \
+    "first\nbeta\nthird\n" \
+    1 "Patch SEARCH text was not found in: sample.txt" \
+    "first\nbeta\nthird\n"]
+
+test write-file-1.2 {CLI approval accepts yes and defaults to denial} -body {
+    set inputChannel [file tempfile inputPath]
+    set outputChannel [file tempfile outputPath]
+    try {
+        puts $inputChannel "yes"
+        puts $inputChannel "no"
+        flush $inputChannel
+        seek $inputChannel 0
+
+        set arguments [dict create path "created.txt"]
+        set yesResult [::requestPluginApproval \
+            $inputChannel $outputChannel write_file $arguments]
+        set noResult [::requestPluginApproval \
+            $inputChannel $outputChannel write_file $arguments]
+        flush $outputChannel
+        seek $outputChannel 0
+
+        list \
+            $yesResult $noResult \
+            [regexp -all {Allow write plugin 'write_file'} \
+                [read $outputChannel]]
+    } finally {
+        close $inputChannel
+        close $outputChannel
+        file delete $inputPath $outputPath
+    }
+} -result [list 1 0 2]
+
+test write-file-1.3 {CLI approval temporarily uses blocking input} -body {
+    set inputChannel [file tempfile inputPath]
+    set outputChannel [file tempfile outputPath]
+    try {
+        puts $inputChannel "y"
+        flush $inputChannel
+        seek $inputChannel 0
+        fconfigure $inputChannel -blocking 0
+        set approved [::requestPluginApproval \
+            $inputChannel $outputChannel write_file \
+            [dict create path sample.txt]]
+        list $approved [fconfigure $inputChannel -blocking]
+    } finally {
+        close $inputChannel
+        close $outputChannel
+        file delete $inputPath $outputPath
+    }
+} -result [list 1 0]
+
+test write-file-1.4 {all approves remaining writes for this session} -body {
+    set inputChannel [file tempfile inputPath]
+    set outputChannel [file tempfile outputPath]
+    try {
+        set ::approveAllWritesForSession 0
+        puts $inputChannel "all"
+        flush $inputChannel
+        seek $inputChannel 0
+
+        set arguments [dict create path "created.txt"]
+        set firstResult [::requestPluginApproval \
+            $inputChannel $outputChannel write_file $arguments]
+        set secondResult [::requestPluginApproval \
+            $inputChannel $outputChannel delete_file $arguments]
+        flush $outputChannel
+        seek $outputChannel 0
+
+        list \
+            $firstResult $secondResult \
+            [regexp -all {Allow write plugin} [read $outputChannel]]
+    } finally {
+        set ::approveAllWritesForSession 0
+        close $inputChannel
+        close $outputChannel
+        file delete $inputPath $outputPath
+    }
+} -result [list 1 1 1]
+
+test write-file-1.5 {approve all never bypasses Tcl execution approval} -body {
+    set inputChannel [file tempfile inputPath]
+    set outputChannel [file tempfile outputPath]
+    try {
+        set ::approveAllWritesForSession 0
+        puts $inputChannel "all"
+        puts $inputChannel "y"
+        puts $inputChannel "y"
+        flush $inputChannel
+        seek $inputChannel 0
+        set arguments [dict create path script.tcl]
+        set writeResult [::requestPluginApproval \
+            $inputChannel $outputChannel write_file $arguments]
+        set runnerResult [::requestPluginApproval \
+            $inputChannel $outputChannel run_tcl_file $arguments]
+        set projectResult [::requestPluginApproval \
+            $inputChannel $outputChannel run_project_tests [dict create]]
+        flush $outputChannel
+        seek $outputChannel 0
+        set prompts [read $outputChannel]
+        list \
+            $writeResult $runnerResult $projectResult \
+            [expr {[string first "No OS sandbox may be active" \
+                $prompts] >= 0}]
+    } finally {
+        set ::approveAllWritesForSession 0
+        close $inputChannel
+        close $outputChannel
+        file delete $inputPath $outputPath
+    }
+} -result [list 1 1 1 1]
+
+
+::finishTests

@@ -1,0 +1,342 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test skills-tool-1.1 {load_skill exposes one selected workflow on demand} -body {
+    set skills [::tSkillRegistry new [list [file join $projectDir skills]]]
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} $skills]
+    set config [::FakeConfig new [dict create LLM.api_key test-only-key]]
+    set client [::tLLMClient new $config]
+    try {
+        set definitionNames [lmap definition [$registry definitions] {
+            dict get $definition name
+        }]
+        set payload [::json::json2dict [$client buildPayload \
+            system [list [dict create role user content test]] \
+            [$registry definitions]]]
+        set loadDefinition {}
+        foreach definition [dict get $payload tools] {
+            if {[dict get $definition function name] eq "load_skill"} {
+                set loadDefinition $definition
+                break
+            }
+        }
+        set instructions [$registry invoke load_skill \
+            [::json::write object name \
+                [::json::write string create-oodz-class]]]
+        list \
+            [expr {"load_skill" in [$registry names]}] \
+            [expr {"load_skill" in $definitionNames}] \
+            [dict get $loadDefinition function parameters type] \
+            [expr {[string first "Use `oodz_lookup`" $instructions] >= 0}]
+    } finally {
+        $client destroy
+        $config destroy
+        $registry destroy
+        $skills destroy
+    }
+} -result [list 1 1 object 1]
+
+test search-files-1.1 {search_files finds bounded nested literal matches} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-search-test-[pid]-[clock clicks]"]
+    file mkdir [file join $temporaryRoot nested]
+    set rootChannel [open [file join $temporaryRoot root.txt] w]
+    puts $rootChannel "A NEEDLE in the root."
+    close $rootChannel
+    set nestedChannel [open [file join $temporaryRoot nested code.tcl] w]
+    puts $nestedChannel "first line"
+    puts $nestedChannel "a needle in nested code"
+    close $nestedChannel
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]]]
+
+    try {
+        set matches [$registry invoke search_files [::json::write object \
+            query [::json::write string "needle"]]]
+        set noMatches [$registry invoke search_files [::json::write object \
+            query [::json::write string "absent"] \
+            path [::json::write string "nested"]]]
+        set emptyResult [catch {
+            $registry invoke search_files [::json::write object \
+                query [::json::write string ""]]
+        } emptyMessage]
+        set escapeResult [catch {
+            $registry invoke search_files [::json::write object \
+                query [::json::write string "needle"] \
+                path [::json::write string "../outside"]]
+        } escapeMessage]
+
+        list \
+            [expr {[string first "root.txt:1:" $matches] >= 0}] \
+            [expr {[string first "nested/code.tcl:2:" $matches] >= 0}] \
+            $noMatches \
+            $emptyResult $emptyMessage \
+            $escapeResult $escapeMessage
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    1 1 \
+    "No matches found." \
+    1 "Search query must not be empty" \
+    1 "Plugin path escapes the workspace"]
+
+test oodz-lookup-1.1 {oodz_lookup finds compact framework capabilities} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    try {
+        set sqlResult [$registry invoke oodz_lookup [::json::write object \
+            query [::json::write string "date range"]]]
+        set baseResult [$registry invoke oodz_lookup [::json::write object \
+            query [::json::write string "baseObj"]]]
+        set missingResult [$registry invoke oodz_lookup [::json::write object \
+            query [::json::write string "nonexistent capability"]]]
+        set emptyCode [catch {
+            $registry invoke oodz_lookup [::json::write object \
+                query [::json::write string ""]]
+        } emptyMessage]
+        list \
+            [expr {[string first "Name: ::SQLBuilder" $sqlResult] >= 0}] \
+            [expr {[string first "Source: db/SelectSqlBuilder.tcl" \
+                $sqlResult] >= 0}] \
+            [expr {[string first "Name: ::oodz::baseObj" \
+                $baseResult] >= 0}] \
+            $missingResult $emptyCode $emptyMessage
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    1 1 1 \
+    "No OODZ components found for: nonexistent capability" \
+    1 "OODZ lookup query must not be empty"]
+
+test oodz-read-1.1 {oodz_read returns confined bounded numbered UTF-8 lines} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-read-test-[pid]-[clock clicks]"]
+    set referenceRoot [file join $temporaryRoot framework]
+    file mkdir [file join $referenceRoot base]
+    set sourcePath [file join $referenceRoot base sample.tcl]
+    set sourceChannel [open $sourcePath wb]
+    puts -nonewline $sourceChannel [encoding convertto utf-8 \
+        "line one\nстрока два\n行三\nline four"]
+    close $sourceChannel
+    set binaryPath [file join $referenceRoot binary.dat]
+    set binaryChannel [open $binaryPath wb]
+    puts -nonewline $binaryChannel [binary format H* 410042]
+    close $binaryChannel
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]] \
+        "" 1000 65536 [dict create oodz $referenceRoot]]
+
+    try {
+        set result [$registry invoke oodz_read [::json::write object \
+            path [::json::write string base/sample.tcl] \
+            start_line 2 end_line 3]]
+        set escapeCode [catch {
+            $registry invoke oodz_read [::json::write object \
+                path [::json::write string ../outside.tcl]]
+        } escapeMessage]
+        set rangeCode [catch {
+            $registry invoke oodz_read [::json::write object \
+                path [::json::write string base/sample.tcl] \
+                start_line 1 end_line 201]
+        } rangeMessage]
+        set binaryCode [catch {
+            $registry invoke oodz_read [::json::write object \
+                path [::json::write string binary.dat]]
+        } binaryMessage]
+        list $result \
+            $escapeCode $escapeMessage \
+            $rangeCode $rangeMessage \
+            $binaryCode $binaryMessage
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    "2: строка два\n3: 行三" \
+    1 "Reference path escapes configured root: oodz" \
+    1 "OODZ reads are limited to 200 lines" \
+    1 "OODZ file appears to be binary: binary.dat"]
+
+test oodz-search-1.1 {oodz_search finds bounded source matches and skips internals} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-framework-search-test-[pid]-[clock clicks]"]
+    set referenceRoot [file join $temporaryRoot framework]
+    file mkdir [file join $referenceRoot base] \
+        [file join $referenceRoot nested] \
+        [file join $referenceRoot .git] \
+        [file join $referenceRoot tmp]
+    foreach {relativePath content} [list \
+            base/baseObj.tcl "first\n:public method save2db {} {\n}\n" \
+            nested/unicode.tcl "метод сохранения SAVE2DB\n" \
+            .git/ignored.tcl "save2db\n" \
+            tmp/ignored.tcl "save2db\n"] {
+        set channel [open [file join $referenceRoot $relativePath] wb]
+        puts -nonewline $channel [encoding convertto utf-8 $content]
+        close $channel
+    }
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]] \
+        "" 1000 65536 [dict create oodz $referenceRoot]]
+
+    try {
+        set matches [$registry invoke oodz_search [::json::write object \
+            query [::json::write string save2db]]]
+        set scoped [$registry invoke oodz_search [::json::write object \
+            query [::json::write string save2db] \
+            path [::json::write string base]]]
+        set absent [$registry invoke oodz_search [::json::write object \
+            query [::json::write string absent]]]
+        set escapeCode [catch {
+            $registry invoke oodz_search [::json::write object \
+                query [::json::write string save2db] \
+                path [::json::write string ../outside]]
+        } escapeMessage]
+        list \
+            [expr {[string first "base/baseObj.tcl:2:" $matches] >= 0}] \
+            [expr {[string first "nested/unicode.tcl:1:" $matches] >= 0}] \
+            [expr {[string first ".git/" $matches] < 0}] \
+            [expr {[string first "tmp/" $matches] < 0}] \
+            [expr {[string first "base/baseObj.tcl:2:" $scoped] >= 0}] \
+            $absent $escapeCode $escapeMessage
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    1 1 1 1 1 \
+    "No OODZ matches found." \
+    1 "Reference path escapes configured root: oodz"]
+
+test file-info-1.1 {file_info reports stable metadata and rejects missing paths} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-info-test-[pid]-[clock clicks]"]
+    file mkdir $temporaryRoot
+    set target [file join $temporaryRoot sample.txt]
+    set channel [open $target w]
+    puts -nonewline $channel "hello"
+    close $channel
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]]]
+
+    try {
+        set result [$registry invoke file_info [::json::write object \
+            path [::json::write string sample.txt]]]
+        set missingCode [catch {
+            $registry invoke file_info [::json::write object \
+                path [::json::write string missing.txt]]
+        } missingMessage]
+        list \
+            [expr {[string first "Path: sample.txt" $result] >= 0}] \
+            [expr {[string first "Type: file" $result] >= 0}] \
+            [expr {[string first "Size: 5 bytes" $result] >= 0}] \
+            $missingCode $missingMessage
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list 1 1 1 1 "Path does not exist: missing.txt"]
+
+test xml-validate-1.1 {xml_validate accepts valid XML and explains invalid XML} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-xml-test-[pid]-[clock clicks]"]
+    file mkdir $temporaryRoot
+    set validPath [file join $temporaryRoot valid.xml]
+    set invalidPath [file join $temporaryRoot invalid.xml]
+    foreach {path content} [list \
+            $validPath {<?xml version="1.0" encoding="UTF-8"?><layout><row/></layout>} \
+            $invalidPath {<layout><row></layout>}] {
+        set channel [open $path w]
+        fconfigure $channel -encoding utf-8
+        puts -nonewline $channel $content
+        close $channel
+    }
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]]]
+
+    try {
+        set valid [$registry invoke xml_validate [::json::write object \
+            path [::json::write string valid.xml]]]
+        set invalidCode [catch {
+            $registry invoke xml_validate [::json::write object \
+                path [::json::write string invalid.xml]]
+        } invalidMessage]
+        set missingCode [catch {
+            $registry invoke xml_validate [::json::write object \
+                path [::json::write string missing.xml]]
+        } missingMessage]
+        list $valid $invalidCode \
+            [string match {Invalid XML in invalid.xml:*} $invalidMessage] \
+            $missingCode $missingMessage
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    "Valid XML: valid.xml\nRoot element: layout" \
+    1 1 1 "XML file does not exist: missing.xml"]
+
+test save-translation-1.1 {save_translation dry run validates its JSON without HTTP} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]] \
+        [list ::ApprovalMock::decide] 1000]
+    set arguments [::json::write object \
+        original [::json::write string "Customer address"] \
+        pt_pt [::json::write string "Endereço do cliente"] \
+        ch_ch [::json::write string "客户地址"] \
+        ru_ru [::json::write string "Адрес клиента"] \
+        fr_fr [::json::write string "Adresse du client"] \
+        es_es [::json::write string "Dirección del cliente"] \
+        en_us [::json::write string "Customer address"] \
+        dry_run true]
+    set transliteratedArguments [::json::write object \
+        original [::json::write string "Bottle"] \
+        pt_pt [::json::write string "Garrafa"] \
+        ch_ch [::json::write string "瓶子"] \
+        ru_ru [::json::write string "Butylka"] \
+        fr_fr [::json::write string "Bouteille"] \
+        es_es [::json::write string "Botella"] \
+        en_us [::json::write string "Bottle"] \
+        dry_run true]
+
+    try {
+        set ::ApprovalMock::approved 1
+        set result [$registry invoke save_translation $arguments]
+        set registryNamespace [info object namespace $registry]
+        set pluginInterpreter \
+            [set ${registryNamespace}::pluginInterpreter]
+        set legacyDecoded [interp eval $pluginInterpreter [list \
+            ::plugins::save_translation::decodeResponseBody \
+            [binary format H* e7]]]
+        set utf8Decoded [interp eval $pluginInterpreter [list \
+            ::plugins::save_translation::decodeResponseBody \
+            [encoding convertto utf-8 "瓶子"]]]
+        set transliterationCode [catch {
+            $registry invoke save_translation $transliteratedArguments
+        } transliterationMessage]
+        set resultLines [split $result "\n"]
+        set payload [::json::json2dict \
+            [join [lrange $resultLines 1 end] "\n"]]
+        list \
+            [lindex $resultLines 0] \
+            [dict get $payload original] \
+            [dict get $payload ch_ch] \
+            [dict get $payload pt_pt] \
+            $legacyDecoded $utf8Decoded \
+            $transliterationCode $transliterationMessage
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    "Dry run; no request sent." \
+    "Customer address" "客户地址" "Endereço do cliente" \
+    "ç" "瓶子" \
+    1 "Russian translation must contain Cyrillic characters; transliteration is not allowed"]
+
+
+::finishTests

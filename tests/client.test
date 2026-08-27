@@ -1,0 +1,610 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test client-api-key-1.1 {client requires API key from configuration} -body {
+    set missingConfig [::FakeConfig new]
+    set presentConfig [::FakeConfig new [dict create \
+        LLM.api_key "test-only-key"]]
+    try {
+        set missingResult [catch {
+            ::tLLMClient new $missingConfig
+        } missingMessage]
+
+        set client [::tLLMClient new $presentConfig]
+        set presentResult [info object isa object $client]
+        $client destroy
+
+        list $missingResult $missingMessage $presentResult
+    } finally {
+        $missingConfig destroy
+        $presentConfig destroy
+    }
+} -result [list 1 "LLM.api_key is required in conf/conf.ini" 1]
+
+test client-ollama-1.1 {Ollama works without authorization or DeepSeek fields} -body {
+    set config [::FakeConfig new [dict create \
+        LLM.provider ollama \
+        LLM.api_key "" \
+        LLM.model qwen3 \
+        LLM.url http://localhost:11434/v1/chat/completions \
+        LLM.max_retries 0]]
+    set responseBody [::json::write object \
+        choices [::json::write array \
+            [::json::write object message [::json::write object \
+                role [::json::write string assistant] \
+                content [::json::write string "local response"]]]]]
+    set transport [::FakeTransport new [list \
+        [dict create status ok code 200 body $responseBody]]]
+    set client [::tLLMClient new $config $transport]
+    try {
+        set result [$client queryMessage "system" [list \
+            [dict create role user content hello]] [list \
+            [dict create name read_file description "Read a file" \
+                parameters_json {{"type":"object"}}]]]
+        set request [lindex [$transport getRequests] 0]
+        set payload [::json::json2dict [lindex $request 1]]
+        list \
+            [dict get $result content] \
+            [lindex $request 2] \
+            [dict get $payload model] \
+            [dict exists $payload tools] \
+            [dict exists $payload thinking] \
+            [dict exists $payload parallel_tool_calls]
+    } finally {
+        $client destroy
+        $transport destroy
+        $config destroy
+    }
+} -result [list "local response" {} qwen3 1 0 0]
+
+test client-tls-1.1 {TLS registration uses supported option names} -body {
+    set sourceChannel [open [file join $projectDir clientClass.tcl] r]
+    try {
+        set clientSource [read $sourceChannel]
+    } finally {
+        close $sourceChannel
+    }
+
+    list \
+        [expr {[string first "-tls1.2 1" $clientSource] >= 0}] \
+        [expr {[string first "-tls1.3 1" $clientSource] >= 0}] \
+        [expr {[string first "-tls1_2" $clientSource] < 0}] \
+        [expr {[string first "-tls1_3" $clientSource] < 0}]
+} -result [list 1 1 1 1]
+
+test client-http-encoding-1.1 {HTTP request bodies are explicitly UTF-8} -body {
+    set sourceChannel [open [file join $projectDir clientClass.tcl] r]
+    try {
+        set clientSource [read $sourceChannel]
+    } finally {
+        close $sourceChannel
+    }
+    list \
+        [regexp -all -- \
+            {-query \[encoding convertto utf-8 \$payload\]} \
+            $clientSource] \
+        [expr {[string first \
+            {body [encoding convertfrom utf-8 [::http::data $token]]} \
+            $clientSource] >= 0}]
+} -result [list 2 1]
+
+test client-json-1.1 {JSON payload and response preserve message content} -body {
+    set config [::FakeConfig new [dict create \
+        LLM.api_key "test-only-key" \
+        LLM.model "deepseek-v4-flash"]]
+    set client [::tLLMClient new $config]
+    set special "quote \" backslash \\ newline\n tab\t café \u263a"
+
+    try {
+        set payload [::json::json2dict \
+            [$client buildPayload "System: $special" [list \
+                [dict create role user content "User: $special"]]]]
+        set responseBody [::json::write object \
+            choices [::json::write array \
+                [::json::write object \
+                    message [::json::write object \
+                        role [::json::write string "assistant"] \
+                        content [::json::write string $special]]]]]
+
+        list \
+            [dict get $payload model] \
+            [dict get [lindex [dict get $payload messages] 0] content] \
+            [dict get [lindex [dict get $payload messages] 1] content] \
+            [$client parseResponse $responseBody]
+    } finally {
+        $client destroy
+        $config destroy
+    }
+} -result [list \
+    "deepseek-v4-flash" \
+    "System: quote \" backslash \\ newline\n tab\t café \u263a" \
+    "User: quote \" backslash \\ newline\n tab\t café \u263a" \
+    "quote \" backslash \\ newline\n tab\t café \u263a"]
+
+test client-json-1.2 {JSON parser reports malformed and API error bodies} -body {
+    set config [::FakeConfig new [dict create LLM.api_key "test-only-key"]]
+    set client [::tLLMClient new $config]
+
+    try {
+        set malformedBody "[format %c 123]not JSON"
+        set malformedCode [catch {
+            $client parseResponse $malformedBody
+        } malformedMessage]
+        set apiErrorCode [catch {
+            $client parseResponse {{"error":{"message":"bad request"}}}
+        } apiErrorMessage]
+
+        list \
+            $malformedCode $malformedMessage \
+            $apiErrorCode $apiErrorMessage
+    } finally {
+        $client destroy
+        $config destroy
+    }
+} -result [list \
+    1 "Parsing Error: invalid JSON response" \
+    1 "Parsing Error: response has no assistant message"]
+
+test client-json-1.3 {DeepSeek tool-call messages round-trip without field loss} -body {
+    set config [::FakeConfig new [dict create LLM.api_key "test-only-key"]]
+    set client [::tLLMClient new $config]
+    set arguments [::json::write object \
+        path [::json::write string "main.tcl"]]
+    set assistantMessage [dict create \
+        role assistant \
+        content "" \
+        reasoning_content "I need to inspect the file." \
+        tool_calls [list [dict create \
+            id "call_1" \
+            type "function" \
+            function [dict create \
+                name "read_file" \
+                arguments $arguments]]]]
+    set toolMessage [dict create \
+        role tool \
+        content "file contents" \
+        tool_call_id "call_1"]
+
+    try {
+        set responseBody [::json::write object \
+            choices [::json::write array \
+                [::json::write object \
+                    message [$client encodeMessage $assistantMessage]]]]
+        set parsedMessage [$client parseResponseMessage $responseBody]
+        set payload [::json::json2dict \
+            [$client buildPayload "system" [list \
+                [dict create role user content "inspect main.tcl"] \
+                $parsedMessage \
+                $toolMessage]]]
+        set parsedCall [lindex [dict get $parsedMessage tool_calls] 0]
+        set encodedAssistant [lindex [dict get $payload messages] 2]
+        set encodedTool [lindex [dict get $payload messages] 3]
+
+        list \
+            [dict get $parsedMessage role] \
+            [dict get $parsedMessage content] \
+            [dict get $parsedMessage reasoning_content] \
+            [dict get $parsedCall id] \
+            [dict get $parsedCall function name] \
+            [::json::json2dict [dict get $parsedCall function arguments]] \
+            [dict get $encodedAssistant content] \
+            [dict get $encodedAssistant reasoning_content] \
+            [::json::json2dict [dict get \
+                [lindex [dict get $encodedAssistant tool_calls] 0] \
+                function arguments]] \
+            [dict get $encodedTool tool_call_id] \
+            [dict get $encodedTool content]
+    } finally {
+        $client destroy
+        $config destroy
+    }
+} -result [list \
+    "assistant" \
+    "" \
+    "I need to inspect the file." \
+    "call_1" \
+    "read_file" \
+    [dict create path "main.tcl"] \
+    "" \
+    "I need to inspect the file." \
+    [dict create path "main.tcl"] \
+    "call_1" \
+    "file contents"]
+
+test client-json-1.4 {DeepSeek payload includes plugin tool definitions} -body {
+    set config [::FakeConfig new [dict create LLM.api_key "test-only-key"]]
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    set client [::tLLMClient new $config]
+
+    try {
+        set payload [::json::json2dict \
+            [$client buildPayload "system" [list \
+                [dict create role user content "inspect files"]] \
+                [$registry definitions]]]
+        set tools [dict get $payload tools]
+        set readFile {}
+        foreach tool $tools {
+            if {[dict get $tool function name] eq "read_file"} {
+                set readFile $tool
+                break
+            }
+        }
+
+        list \
+            [llength $tools] \
+            [dict get $payload parallel_tool_calls] \
+            [dict get $payload thinking type] \
+            [dict get [lindex $tools 0] type] \
+            [dict get $readFile function name] \
+            [dict get $readFile function parameters type] \
+            [dict get $readFile function parameters required]
+    } finally {
+        $client destroy
+        $registry destroy
+        $config destroy
+    }
+} -result [list 47 false disabled function read_file object [list path]]
+
+test client-stream-1.1 {streaming assembles content and tool-call deltas} -body {
+    set config [::FakeConfig new [dict create LLM.api_key "test-only-key"]]
+    set events [list \
+        [::json::write object choices [::json::write array \
+            [::json::write object delta [::json::write object \
+                reasoning_content [::json::write string "Need a file. "]]]]] \
+        [::json::write object choices [::json::write array \
+            [::json::write object delta [::json::write object \
+                content [::json::write string "Checking..."]]]]] \
+        [::json::write object choices [::json::write array \
+            [::json::write object delta [::json::write object \
+                tool_calls [::json::write array \
+                    [::json::write object \
+                        index 0 \
+                        id [::json::write string "call_"] \
+                        type [::json::write string "function"] \
+                        function [::json::write object \
+                            name [::json::write string "read_"] \
+                            arguments [::json::write string \
+                                "{\"path\":"]]]]]]]] \
+        [::json::write object choices [::json::write array \
+            [::json::write object delta [::json::write object \
+                tool_calls [::json::write array \
+                    [::json::write object \
+                        index 0 \
+                        id [::json::write string "1"] \
+                        function [::json::write object \
+                            name [::json::write string "file"] \
+                            arguments [::json::write string \
+                                "\"main.tcl\"}"]]]]]]]]]
+    set transport [::FakeStreamingTransport new $events]
+    set client [::tLLMClient new $config $transport]
+    set ::StreamCapture::content ""
+
+    try {
+        set message [$client queryMessageStream \
+            "system" \
+            [list [dict create role user content "inspect"]] \
+            {} \
+            [list ::StreamCapture::append]]
+        set call [lindex [dict get $message tool_calls] 0]
+        set payload [::json::json2dict [$transport getPayload]]
+
+        list \
+            [dict get $payload stream] \
+            $::StreamCapture::content \
+            [dict get $message content] \
+            [dict get $message reasoning_content] \
+            [dict get $call id] \
+            [dict get $call type] \
+            [dict get $call function name] \
+            [::json::json2dict [dict get $call function arguments]]
+    } finally {
+        $client destroy
+        $transport destroy
+        $config destroy
+    }
+} -result [list \
+    true \
+    "Checking..." \
+    "Checking..." \
+    "Need a file. " \
+    "call_1" \
+    "function" \
+    "read_file" \
+    [dict create path main.tcl]]
+
+test client-stream-1.2 {empty stream falls back to a visible buffered response} -body {
+    set config [::FakeConfig new [dict create \
+        LLM.api_key "test-only-key" \
+        LLM.max_retries 0]]
+    set fallbackBody [::json::write object \
+        choices [::json::write array [::json::write object \
+            message [::json::write object \
+                role [::json::write string assistant] \
+                content [::json::write string "Olá!"]]]]]
+    set transport [::FakeStreamingTransport new {} $fallbackBody]
+    set client [::tLLMClient new $config $transport]
+    set ::StreamCapture::content ""
+
+    try {
+        set message [$client queryMessageStream \
+            "system" [list [dict create role user content "ola"]] {} \
+            [list ::StreamCapture::append]]
+        list \
+            [dict get $message content] \
+            $::StreamCapture::content \
+            [$transport getPostCount]
+    } finally {
+        $client destroy
+        $transport destroy
+        $config destroy
+    }
+} -result [list "Olá!" "Olá!" 1]
+
+test client-stream-1.3 {timed-out empty stream falls back to buffered request} -body {
+    set config [::FakeConfig new [dict create \
+        LLM.api_key "test-only-key" \
+        LLM.max_retries 0]]
+    set fallbackBody [::json::write object \
+        choices [::json::write array [::json::write object \
+            message [::json::write object \
+                role [::json::write string assistant] \
+                content [::json::write string "Recovered response"]]]]]
+    set transport [::FakeStreamingTransport new {} $fallbackBody \
+        [dict create status timeout code 200 body ""]]
+    set client [::tLLMClient new $config $transport]
+    set ::StreamCapture::content ""
+
+    try {
+        set message [$client queryMessageStream \
+            "system" [list [dict create role user content "create file"]] {} \
+            [list ::StreamCapture::append]]
+        list \
+            [dict get $message content] \
+            $::StreamCapture::content \
+            [$transport getPostCount]
+    } finally {
+        $client destroy
+        $transport destroy
+        $config destroy
+    }
+} -result [list "Recovered response" "Recovered response" 1]
+
+test client-stream-1.4 {rejected empty stream falls back to buffered request} -body {
+    set config [::FakeConfig new [dict create \
+        LLM.api_key "test-only-key" \
+        LLM.max_retries 0]]
+    set fallbackBody [::json::write object \
+        choices [::json::write array [::json::write object \
+            message [::json::write object \
+                role [::json::write string assistant] \
+                content [::json::write string "Buffered recovery"]]]]]
+    set transport [::FakeStreamingTransport new {} $fallbackBody \
+        [dict create status ok code 400 body ""]]
+    set client [::tLLMClient new $config $transport]
+    set ::StreamCapture::content ""
+
+    try {
+        set message [$client queryMessageStream \
+            "system" [list [dict create role user content "inspect"]] {} \
+            [list ::StreamCapture::append]]
+        list \
+            [dict get $message content] \
+            $::StreamCapture::content \
+            [$transport getPostCount]
+    } finally {
+        $client destroy
+        $transport destroy
+        $config destroy
+    }
+} -result [list "Buffered recovery" "Buffered recovery" 1]
+
+test client-stream-1.5 {stream socket exception falls back with retries} -body {
+    set config [::FakeConfig new [dict create \
+        LLM.api_key "test-only-key" \
+        LLM.max_retries 0]]
+    set fallbackBody [::json::write object \
+        choices [::json::write array [::json::write object \
+            message [::json::write object \
+                role [::json::write string assistant] \
+                content [::json::write string "Recovered from DNS"]]]]]
+    set transport [::FakeStreamingTransport new \
+        {} $fallbackBody "" "mock DNS failure"]
+    set client [::tLLMClient new $config $transport]
+    set ::StreamCapture::content ""
+    try {
+        set message [$client queryMessageStream \
+            system [list [dict create role user content continue]] {} \
+            [list ::StreamCapture::append]]
+        list [dict get $message content] \
+            $::StreamCapture::content [$transport getPostCount]
+    } finally {
+        $client destroy
+        $transport destroy
+        $config destroy
+    }
+} -result [list "Recovered from DNS" "Recovered from DNS" 1]
+
+test client-stream-1.6 {SSE transport decodes complete UTF-8 events} -body {
+    set transport [::tHttpTransport new]
+    set channel [file tempfile ssePath]
+    set event [format {{"text":"%s"}} "café — Tcl"]
+    set ::SSECapture::events {}
+
+    try {
+        fconfigure $channel -translation binary
+        puts -nonewline $channel [encoding convertto utf-8 \
+            "data: $event\n\ndata: \[DONE\]\n\n"]
+        flush $channel
+        seek $channel 0
+
+        set bytesRead [$transport receiveStream \
+            [list ::SSECapture::add] $channel token]
+        list \
+            [expr {$bytesRead > 0}] \
+            [llength $::SSECapture::events] \
+            [dict get [::json::json2dict \
+                [lindex $::SSECapture::events 0]] text]
+    } finally {
+        close $channel
+        file delete $ssePath
+        $transport destroy
+    }
+} -result [list 1 1 "café — Tcl"]
+
+test client-config-1.1 {client validates HTTP configuration} -body {
+    set cases [list \
+        [dict create LLM.api_key key LLM.provider other] \
+        [dict create LLM.api_key key LLM.model ""] \
+        [dict create LLM.api_key key LLM.url "https://example.com"] \
+        [dict create LLM.api_key key LLM.timeout "later"] \
+        [dict create LLM.api_key key LLM.max_retries -1] \
+        [dict create LLM.api_key key LLM.retry_delay_ms 0] \
+        [dict create LLM.api_key key LLM.thinking perhaps]]
+    set results {}
+
+    foreach values $cases {
+        set config [::FakeConfig new $values]
+        lappend results [catch {
+            ::tLLMClient new $config
+        } message] $message
+        $config destroy
+    }
+    set results
+} -result [list \
+    1 "LLM.provider must be one of: deepseek, ollama" \
+    1 "LLM.model must not be empty" \
+    1 "LLM.url must be a full HTTP endpoint" \
+    1 "LLM.timeout must be a positive integer" \
+    1 "LLM.max_retries must be a non-negative integer" \
+    1 "LLM.retry_delay_ms must be a positive integer" \
+    1 "LLM.thinking must be boolean"]
+
+test client-http-1.1 {HTTP outcomes are handled through injected transport} -body {
+    set config [::FakeConfig new [dict create \
+        LLM.api_key "test-only-key" \
+        LLM.url "https://example.test/v1/chat/completions" \
+        LLM.max_retries 0]]
+    set successBody [::json::write object \
+        choices [::json::write array \
+            [::json::write object \
+                message [::json::write object \
+                    role [::json::write string "assistant"] \
+                    content [::json::write string "success"]]]]]
+    set errorBody [::json::write object \
+        error [::json::write object \
+            message [::json::write string "rate limited"]]]
+    set transport [::FakeTransport new [list \
+        [dict create status ok code 200 body $successBody] \
+        [dict create status ok code 429 body $errorBody] \
+        [dict create status ok code 200 body "invalid JSON"] \
+        [dict create error "mock timeout"]]]
+    set client [::tLLMClient new $config $transport]
+
+    try {
+        set successResult [$client query "system" [list \
+            [dict create role user content "user"]]]
+
+        set httpErrorResult [catch {
+            $client query "system" [list \
+                [dict create role user content "user"]]
+        } errorMessage]
+
+        set malformedCode [catch {
+            $client query "system" [list \
+                [dict create role user content "user"]]
+        } malformedMessage]
+
+        set timeoutCode [catch {
+            $client query "system" [list \
+                [dict create role user content "user"]]
+        } timeoutMessage]
+
+        list \
+            $successResult \
+            $httpErrorResult $errorMessage \
+            $malformedCode $malformedMessage \
+            $timeoutCode $timeoutMessage \
+            [llength [$transport getRequests]]
+    } finally {
+        $client destroy
+        $transport destroy
+        $config destroy
+    }
+} -result [list \
+    "success" \
+    1 "DeepSeek API Error: HTTP 429: rate limited" \
+    1 "Parsing Error: invalid JSON response" \
+    1 "mock timeout" \
+    4]
+
+test client-retry-1.1 {transient failures retry with bounded backoff} -body {
+    set config [::FakeConfig new [dict create \
+        LLM.api_key "test-only-key" \
+        LLM.url "https://example.test/v1/chat/completions" \
+        LLM.max_retries 2 \
+        LLM.retry_delay_ms 100]]
+    set successBody [::json::write object \
+        choices [::json::write array \
+            [::json::write object \
+                message [::json::write object \
+                    role [::json::write string "assistant"] \
+                    content [::json::write string "recovered"]]]]]
+    set transport [::FakeTransport new [list \
+        [dict create status ok code 503 body "unavailable"] \
+        [dict create error "connection reset"] \
+        [dict create status ok code 200 body $successBody]]]
+    set client [::tLLMClient new $config $transport]
+
+    try {
+        list \
+            [$client query "system" [list \
+                [dict create role user content "user"]]] \
+            [llength [$transport getRequests]] \
+            [$transport getWaits]
+    } finally {
+        $client destroy
+        $transport destroy
+        $config destroy
+    }
+} -result [list "recovered" 3 [list 100 200]]
+
+test client-retry-1.2 {non-transient and parsing errors do not retry} -body {
+    set config [::FakeConfig new [dict create \
+        LLM.api_key "test-only-key" \
+        LLM.url "https://example.test/v1/chat/completions" \
+        LLM.max_retries 2]]
+    set authBody [::json::write object \
+        error [::json::write object \
+            message [::json::write string "unauthorized"]]]
+    set transport [::FakeTransport new [list \
+        [dict create status ok code 401 body $authBody] \
+        [dict create status ok code 200 body "invalid JSON"]]]
+    set client [::tLLMClient new $config $transport]
+
+    try {
+        set authResult [catch {
+            $client query "system" [list \
+                [dict create role user content "user"]]
+        } authMessage]
+        set parseResult [catch {
+            $client query "system" [list \
+                [dict create role user content "user"]]
+        } parseMessage]
+        list \
+            $authResult $authMessage \
+            $parseResult $parseMessage \
+            [llength [$transport getRequests]] \
+            [$transport getWaits]
+    } finally {
+        $client destroy
+        $transport destroy
+        $config destroy
+    }
+} -result [list \
+    1 "DeepSeek API Error: HTTP 401: unauthorized" \
+    1 "Parsing Error: invalid JSON response" \
+    2 {}]
+
+::finishTests

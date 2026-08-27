@@ -1,0 +1,326 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test http-get-1.1 {HTTP GET URL is scoped and query encoded offline} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    try {
+        set registryNamespace [info object namespace $registry]
+        set pluginInterpreter \
+            [set ${registryNamespace}::pluginInterpreter]
+        set settings [dict create \
+            base_url http://127.0.0.1:8080 \
+            allowed_path_prefixes /api/,/health]
+        set url [interp eval $pluginInterpreter [list \
+            ::plugins::http_get::buildUrl \
+            [dict create path /api/v2/client query [dict create \
+                search "José Silva" page 2]] \
+            $settings]]
+        set results [list $url]
+        foreach path {
+            https://example.com/api/
+            //example.com/api/
+            /api/../secret
+            /other/path
+            {/api/test?bad=1}
+            {/api/test#fragment}
+        } {
+            lappend results [catch {
+                interp eval $pluginInterpreter [list \
+                    ::plugins::http_get::buildUrl \
+                    [dict create path $path] $settings]
+            }]
+        }
+        set results
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    {http://127.0.0.1:8080/api/v2/client?search=Jos%C3%A9%20Silva&page=2} \
+    1 1 1 1 1 1]
+
+test http-get-1.2 {TLS verification supports private development servers} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    set channel [file tempfile caPath]
+    puts $channel "test CA fixture"
+    close $channel
+    try {
+        set registryNamespace [info object namespace $registry]
+        set pluginInterpreter \
+            [set ${registryNamespace}::pluginInterpreter]
+        set insecure [interp eval $pluginInterpreter [list \
+            ::plugins::http_get::tlsOptions \
+            [dict create tls_verify false]]]
+        set verified [interp eval $pluginInterpreter [list \
+            ::plugins::http_get::tlsOptions \
+            [dict create tls_verify true tls_ca_file $caPath]]]
+        set invalidCode [catch {
+            interp eval $pluginInterpreter [list \
+                ::plugins::http_get::tlsOptions \
+                [dict create tls_verify sometimes]]
+        } invalidMessage]
+        list \
+            [lindex $insecure [expr {[lsearch $insecure -require] + 1}]] \
+            [lindex $verified [expr {[lsearch $verified -require] + 1}]] \
+            [expr {[lindex $verified \
+                [expr {[lsearch $verified -cafile] + 1}]] eq \
+                [file normalize $caPath]}] \
+            $invalidCode $invalidMessage
+    } finally {
+        file delete $caPath
+        $registry destroy
+    }
+} -result [list 0 1 1 1 \
+    "http_get setting must be boolean: tls_verify"]
+
+test http-post-1.1 {HTTP POST validates scoped URLs and native JSON offline} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    try {
+        set registryNamespace [info object namespace $registry]
+        set pluginInterpreter \
+            [set ${registryNamespace}::pluginInterpreter]
+        set settings [dict create \
+            base_url https://127.0.0.1/api/v2 \
+            allowed_path_prefixes /translate/,/tax]
+        set arguments [dict create \
+            path /translate/add_new_line \
+            query [dict create source "OODZ test"]]
+        set url [interp eval $pluginInterpreter [list \
+            ::plugins::http_post::buildUrl $arguments $settings]]
+        set jsonBody \
+            {{"original":"Bottle","ru_ru":"Бутылка","ch_ch":"瓶子","active":true,"rate":21}}
+        set preserved [interp eval $pluginInterpreter [list \
+            ::plugins::http_post::validateJson $jsonBody]]
+        set malformedCode [catch {
+            interp eval $pluginInterpreter [list \
+                ::plugins::http_post::validateJson \
+                {{"original":broken}}]
+        } malformedMessage]
+        set arrayCode [catch {
+            interp eval $pluginInterpreter [list \
+                ::plugins::http_post::validateJson {[1,2,3]}]
+        } arrayMessage]
+        list $url [expr {$preserved eq $jsonBody}] \
+            $malformedCode $malformedMessage $arrayCode $arrayMessage
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    {https://127.0.0.1/api/v2/translate/add_new_line?source=OODZ%20test} \
+    1 1 "http_post json is not valid JSON" \
+    1 "http_post json must be a JSON object"]
+
+test http-write-verbs-1.1 {PUT, PATCH and DELETE expose approved schemas} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    try {
+        set registryNamespace [info object namespace $registry]
+        set plugins [set ${registryNamespace}::plugins]
+        set definitions [dict create]
+        foreach definition [$registry definitions] {
+            dict set definitions [dict get $definition name] $definition
+        }
+        list \
+            [dict get $plugins http_put permission] \
+            [dict get $plugins http_patch permission] \
+            [dict get $plugins http_delete permission] \
+            [dict get $definitions http_put parameters required] \
+            [dict get $definitions http_patch parameters required] \
+            [dict get $definitions http_delete parameters required] \
+            [dict exists $definitions http_delete parameters properties json]
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    write write write \
+    [list path json] [list path json] [list path] 1]
+
+test http-headers-1.1 {private HTTP headers are validated offline} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    try {
+        set registryNamespace [info object namespace $registry]
+        set pluginInterpreter \
+            [set ${registryNamespace}::pluginInterpreter]
+        set valid [interp eval $pluginInterpreter [list \
+            ::plugins::http_common::customHeaders http_get [dict create \
+                header.Authorization "Bearer private-token" \
+                header.X-API-Key "secret-key"]]]
+        set managedCode [catch {
+            interp eval $pluginInterpreter [list \
+                ::plugins::http_common::customHeaders http_get [dict create \
+                    header.Content-Type text/plain]]
+        } managedMessage]
+        set newlineCode [catch {
+            interp eval $pluginInterpreter [list \
+                ::plugins::http_common::customHeaders http_get [dict create \
+                    header.X-Test "safe\r\nInjected: bad"]]
+        } newlineMessage]
+        list $valid $managedCode $managedMessage \
+            $newlineCode $newlineMessage
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    [list Accept application/json \
+        Authorization "Bearer private-token" X-API-Key secret-key] \
+    1 "http_get custom header is managed internally: Content-Type" \
+    1 "http_get custom header value contains a newline: X-Test"]
+
+test http-transport-1.1 {HTTP verbs assemble exact requests offline} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    try {
+        set registryNamespace [info object namespace $registry]
+        set pluginInterpreter \
+            [set ${registryNamespace}::pluginInterpreter]
+        interp eval $pluginInterpreter {
+            namespace eval ::http_mock {
+                variable calls {}
+            }
+            foreach command {geturl status ncode data error cleanup} {
+                rename ::http::$command ::http::real_$command
+            }
+            proc ::http::geturl {url args} {
+                variable ::http_mock::calls
+                lappend calls [list $url $args]
+                return mock-token
+            }
+            proc ::http::status {token} { return ok }
+            proc ::http::ncode {token} { return 200 }
+            proc ::http::data {token} {
+                encoding convertto utf-8 {{"ok":true}}
+            }
+            proc ::http::error {token} { return "" }
+            proc ::http::cleanup {token} { return }
+        }
+
+        set settings [dict create \
+            base_url http://127.0.0.1:8080/api/v2 \
+            allowed_path_prefixes / \
+            header.Authorization "Bearer private-token" \
+            header.X-Client-Id oodz-agent]
+        set jsonBody \
+            {{"label":"Бутылка","ch_ch":"瓶子","active":true,"rate":21}}
+        foreach call [list \
+            [list ::plugins::http_get::execute \
+                [dict create path /items query [dict create page 2]]] \
+            [list ::plugins::http_post::execute \
+                [dict create path /items json $jsonBody]] \
+            [list ::plugins::http_put::execute \
+                [dict create path /items/1 json $jsonBody]] \
+            [list ::plugins::http_patch::execute \
+                [dict create path /items/1 json $jsonBody]] \
+            [list ::plugins::http_delete::execute \
+                [dict create path /items/1]] \
+            [list ::plugins::http_delete::execute \
+                [dict create path /items/2 json $jsonBody]]] {
+            lassign $call handler arguments
+            interp eval $pluginInterpreter [list \
+                $handler $projectDir $arguments $settings]
+        }
+
+        set calls [interp eval $pluginInterpreter {
+            set ::http_mock::calls
+        }]
+        set summary {}
+        foreach call $calls {
+            lassign $call url optionsList
+            set options [dict create {*}$optionsList]
+            set headers [dict create {*}[dict get $options -headers]]
+            set body ""
+            if {[dict exists $options -query]} {
+                set body [encoding convertfrom utf-8 \
+                    [dict get $options -query]]
+            }
+            lappend summary [list \
+                [dict get $options -method] \
+                $url \
+                [dict get $headers Authorization] \
+                [dict get $headers X-Client-Id] \
+                [expr {[dict exists $options -type]
+                    ? [dict get $options -type] : ""}] \
+                $body]
+        }
+        set summary
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    [list GET {http://127.0.0.1:8080/api/v2/items?page=2} \
+        "Bearer private-token" oodz-agent "" ""] \
+    [list POST http://127.0.0.1:8080/api/v2/items \
+        "Bearer private-token" oodz-agent \
+        "application/json; charset=utf-8" \
+        {{"label":"Бутылка","ch_ch":"瓶子","active":true,"rate":21}}] \
+    [list PUT http://127.0.0.1:8080/api/v2/items/1 \
+        "Bearer private-token" oodz-agent \
+        "application/json; charset=utf-8" \
+        {{"label":"Бутылка","ch_ch":"瓶子","active":true,"rate":21}}] \
+    [list PATCH http://127.0.0.1:8080/api/v2/items/1 \
+        "Bearer private-token" oodz-agent \
+        "application/json; charset=utf-8" \
+        {{"label":"Бутылка","ch_ch":"瓶子","active":true,"rate":21}}] \
+    [list DELETE http://127.0.0.1:8080/api/v2/items/1 \
+        "Bearer private-token" oodz-agent "" ""] \
+    [list DELETE http://127.0.0.1:8080/api/v2/items/2 \
+        "Bearer private-token" oodz-agent \
+        "application/json; charset=utf-8" \
+        {{"label":"Бутылка","ch_ch":"瓶子","active":true,"rate":21}}]]
+
+test http-transport-1.2 {HTTP response status and limits are handled offline} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    try {
+        set registryNamespace [info object namespace $registry]
+        set pluginInterpreter \
+            [set ${registryNamespace}::pluginInterpreter]
+        interp eval $pluginInterpreter {
+            namespace eval ::http_mock {
+                variable responseCode 422
+                variable responseData [encoding convertto utf-8 \
+                    {{"error":"invalid input"}}]
+            }
+            foreach command {geturl status ncode data error cleanup} {
+                rename ::http::$command ::http::real_$command
+            }
+            proc ::http::geturl {url args} { return mock-token }
+            proc ::http::status {token} { return ok }
+            proc ::http::ncode {token} {
+                set ::http_mock::responseCode
+            }
+            proc ::http::data {token} {
+                set ::http_mock::responseData
+            }
+            proc ::http::error {token} { return "" }
+            proc ::http::cleanup {token} { return }
+        }
+        set settings [dict create \
+            base_url http://127.0.0.1:8080 \
+            allowed_path_prefixes / \
+            max_response_chars 1024]
+        set response [interp eval $pluginInterpreter [list \
+            ::plugins::http_get::execute $projectDir \
+            [dict create path /invalid] $settings]]
+        interp eval $pluginInterpreter {
+            set ::http_mock::responseData [string repeat x 20]
+        }
+        dict set settings max_response_chars 10
+        set limitCode [catch {
+            interp eval $pluginInterpreter [list \
+                ::plugins::http_get::execute $projectDir \
+                [dict create path /large] $settings]
+        } limitMessage]
+        list $response $limitCode $limitMessage
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    "HTTP 422\n{\"error\":\"invalid input\"}" \
+    1 "http_get response exceeds configured limit"]
+
+
+::finishTests

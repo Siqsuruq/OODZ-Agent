@@ -1,0 +1,259 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test plugins-1.1 {built-in plugins are discovered and invoked} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+
+    try {
+        set fileContent [$registry invoke read_file [::json::write object \
+            path [::json::write string "main.tcl"]]]
+        set fileList [$registry invoke list_files [::json::write object]]
+
+        list \
+            [$registry names] \
+            [expr {[string first "proc ::main" $fileContent] >= 0}] \
+            [expr {"main.tcl" in [split $fileList "\n"]}] \
+            [expr {"plugins/" in [split $fileList "\n"]}] \
+            [lmap definition [$registry definitions] {
+                dict get $definition name
+            }]
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    [list apply_patch copy_file delete_file edit_file file_info fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_files make_directory move_file oodz_lookup oodz_read oodz_search read_file save_translation search_files write_file xml_validate] \
+    1 1 1 \
+    [list apply_patch copy_file delete_file edit_file file_info fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_files make_directory move_file oodz_lookup oodz_read oodz_search read_file save_translation search_files write_file xml_validate]]
+
+test plugins-lazy-1.1 {lazy registry exposes core tools and activates index matches} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" "" true \
+        [list read_file list_files]]
+    try {
+        set initial [lmap definition [$registry definitions] {
+            dict get $definition name
+        }]
+        set result [$registry invoke search_plugins [::json::write object \
+            query [::json::write string xml_validate] limit 1]]
+        set activated [lmap definition [$registry definitions] {
+            dict get $definition name
+        }]
+        list \
+            $initial \
+            [expr {[string first "xml_validate" $result] >= 0}] \
+            $activated \
+            [expr {[llength [$registry names]] > [llength $activated]}]
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    [list list_files read_file search_plugins] \
+    1 \
+    [list list_files read_file search_plugins xml_validate] \
+    1]
+
+test plugins-lazy-1.2 {lazy search validates query and result limit} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" "" true [list read_file]]
+    try {
+        set results {}
+        foreach arguments [list \
+            [::json::write object query [::json::write string ""]] \
+            [::json::write object query [::json::write string file] limit 0] \
+            [::json::write object query [::json::write string absent_xyz]]] {
+            lappend results [catch {
+                $registry invoke search_plugins $arguments
+            } message] $message
+        }
+        set results
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    1 "Plugin search query must not be empty" \
+    1 "Plugin search limit must be an integer from 1 to 10" \
+    0 "No installed plugins matched: absent_xyz"]
+
+test plugins-lazy-1.3 {model cannot invoke a plugin before activation} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" "" true [list read_file]]
+    set arguments [::json::write object \
+        path [::json::write string main.tcl]]
+    try {
+        set denied [catch {
+            $registry invokeForModel file_info $arguments
+        } deniedMessage]
+        $registry invokeForModel search_plugins [::json::write object \
+            query [::json::write string file_info] limit 1]
+        set result [$registry invokeForModel file_info $arguments]
+        list $denied $deniedMessage \
+            [expr {[string first "main.tcl" $result] >= 0}]
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    1 "Plugin is not active for the model: file_info" 1]
+
+test plugins-metadata-1.1 {metadata filters availability and enriches search} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir tests fixtures \
+            metadata_plugins]] \
+        "" 1000 65536 {} "" "" "" true {} linux]
+    try {
+        set matches [$registry search "compress archive" 5]
+        list \
+            [$registry names] \
+            [$registry unavailable] \
+            [lmap match $matches {dict get $match name}] \
+            [$registry invoke metadata_available [::json::write object]]
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    [list metadata_available] \
+    [dict create \
+        metadata_freebsd "unsupported platform: linux" \
+        metadata_missing \
+            "missing executable: definitely_missing_oodz_executable"] \
+    [list metadata_available] \
+    available]
+
+test plugins-settings-1.1 {private settings reach only the plugin handler} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list \
+            [file join $projectDir tests fixtures settings_plugins]]]
+    try {
+        set definitions [$registry definitions]
+        set result [$registry invoke settings_test \
+            [::json::write object]]
+        list \
+            $result \
+            [dict exists [lindex $definitions 0] settings] \
+            [expr {[string first "127.0.0.1" $definitions] < 0}] \
+            [expr {[string first "never-model-visible" $definitions] < 0}]
+    } finally {
+        $registry destroy
+    }
+} -result [list http://127.0.0.1:8080 0 1 1]
+
+test plugins-1.2 {plugin calls reject invalid names, arguments, and paths} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+
+    try {
+        set results {}
+        foreach {name arguments} [list \
+            unknown [::json::write object] \
+            read_file "not JSON" \
+            read_file [::json::write object] \
+            list_files [::json::write object \
+                extra [::json::write string "value"]] \
+            read_file [::json::write object \
+                path [::json::write string "../outside"]]] {
+            lappend results [catch {
+                $registry invoke $name $arguments
+            } message] $message
+        }
+        set results
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    1 "Unknown plugin: unknown" \
+    1 "Invalid JSON arguments for plugin: read_file" \
+    1 "Missing plugin argument for read_file: path" \
+    1 "Unknown plugin argument for list_files: extra" \
+    1 "Plugin path escapes the workspace"]
+
+test plugins-1.3 {plugin discovery rejects invalid and duplicate manifests} -body {
+    set invalidResult [catch {
+        ::tPluginRegistry new $projectDir [list \
+            [file join $projectDir tests fixtures invalid_plugin]]
+    } invalidMessage]
+    set duplicateResult [catch {
+        ::tPluginRegistry new $projectDir [list \
+            [file join $projectDir plugins] \
+            [file join $projectDir plugins]]
+    } duplicateMessage]
+
+    list \
+        $invalidResult $invalidMessage \
+        $duplicateResult $duplicateMessage
+} -result [list \
+    1 "Invalid plugin manifest: missing description" \
+    1 "Duplicate plugin name: apply_patch"]
+
+test plugins-safety-1.1 {write approval, timeout, and output limits are enforced} -body {
+    set safetyDirectory [file join \
+        $projectDir tests fixtures safety_plugins]
+    set noApproval [::tPluginRegistry new \
+        $projectDir [list $safetyDirectory] "" 20 20]
+    set denied [::tPluginRegistry new \
+        $projectDir [list $safetyDirectory] \
+        [list ::ApprovalMock::decide] 20 20]
+    set approved [::tPluginRegistry new \
+        $projectDir [list $safetyDirectory] \
+        [list ::ApprovalMock::decide] 20 20]
+    set slow [::tPluginRegistry new \
+        $projectDir [list $safetyDirectory] "" 20 20]
+    set large [::tPluginRegistry new \
+        $projectDir [list $safetyDirectory] "" 20 20]
+
+    try {
+        set emptyArguments [::json::write object]
+        set noApprovalResult [catch {
+            $noApproval invoke write_test $emptyArguments
+        } noApprovalMessage]
+
+        set ::ApprovalMock::approved 0
+        set ::ApprovalMock::calls {}
+        set deniedResult [catch {
+            $denied invoke write_test $emptyArguments
+        } deniedMessage]
+
+        set ::ApprovalMock::approved 1
+        set approvedResult [$approved invoke write_test $emptyArguments]
+        set approvalCalls $::ApprovalMock::calls
+        set approvedNamespace [info object namespace $approved]
+        set approvedInterpreter \
+            [set ${approvedNamespace}::pluginInterpreter]
+        set remainingLimit [interp limit $approvedInterpreter time]
+
+        set slowResult [catch {
+            $slow invoke slow_test $emptyArguments
+        } slowMessage]
+        set largeResult [catch {
+            $large invoke large_test $emptyArguments
+        } largeMessage]
+
+        list \
+            $noApprovalResult $noApprovalMessage \
+            $deniedResult $deniedMessage \
+            $approvedResult \
+            [lmap call $approvalCalls {lindex $call 0}] \
+            [dict get $remainingLimit -seconds] \
+            [dict get $remainingLimit -milliseconds] \
+            $slowResult $slowMessage \
+            $largeResult $largeMessage
+    } finally {
+        foreach registry [list \
+                $noApproval $denied $approved $slow $large] {
+            $registry destroy
+        }
+    }
+} -result [list \
+    1 "Plugin approval required: write_test" \
+    1 "Plugin execution denied: write_test" \
+    "write executed" \
+    [list write_test write_test] \
+    {} {} \
+    1 "Plugin execution timed out: slow_test" \
+    1 "Plugin output exceeds limit: large_test"]
+
+
+::finishTests

@@ -1,0 +1,301 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test cli-1.1 {CLI handles help, missing task, success, and failure} -body {
+    set results {}
+
+    foreach case {
+        {help {--help} {}}
+        {interactive {} {}}
+        {success {write a loop} success}
+        {failure {write a loop} failure}
+    } {
+        lassign $case name arguments clientType
+        set client ""
+        if {$clientType eq "success"} {
+            set client [::FakeLLMClient new [list "CLI response"]]
+        } elseif {$clientType eq "failure"} {
+            set client [::FailingLLMClient new]
+        }
+
+        set inputChannel [file tempfile inputPath]
+        set outChannel [file tempfile outPath]
+        set errChannel [file tempfile errPath]
+        try {
+            if {$name eq "interactive"} {
+                puts $inputChannel "/exit"
+            }
+            flush $inputChannel
+            seek $inputChannel 0
+            set exitCode [::main \
+                $projectDir $arguments $client \
+                $outChannel $errChannel $inputChannel]
+            flush $outChannel
+            flush $errChannel
+            seek $outChannel 0
+            seek $errChannel 0
+            lappend results [list \
+                $name $exitCode \
+                [string trim [read $outChannel]] \
+                [string trim [read $errChannel]]]
+        } finally {
+            close $inputChannel
+            close $outChannel
+            close $errChannel
+            file delete $inputPath $outPath $errPath
+            if {$client ne "" && [info object isa object $client]} {
+                $client destroy
+            }
+        }
+    }
+    set results
+} -result [list \
+    [list help 0 "Usage: tclsh main.tcl ?task?" ""] \
+    [list interactive 0 \
+        "OODZ Agent - interactive mode\nType /help for commands.\nyou>" ""] \
+    [list success 0 "CLI response" ""] \
+    [list failure 1 "" "Error: fake failure"]]
+
+test cli-1.2 {interactive CLI retains context and handles commands} -body {
+    set client [::FakeLLMClient new [list \
+        "first response" "second response"]]
+    set inputChannel [file tempfile inputPath]
+    set outChannel [file tempfile outPath]
+    set errChannel [file tempfile errPath]
+
+    try {
+        foreach line {
+            {first task}
+            {second task}
+            /history
+            /new
+            /history
+            /tools
+            /skills
+            /unknown
+            /exit
+        } {
+            puts $inputChannel $line
+        }
+        flush $inputChannel
+        seek $inputChannel 0
+
+        set exitCode [::main \
+            $projectDir {} $client \
+            $outChannel $errChannel $inputChannel]
+        flush $outChannel
+        flush $errChannel
+        seek $outChannel 0
+        seek $errChannel 0
+        set output [read $outChannel]
+        set errors [read $errChannel]
+        set calls [$client getCalls]
+        set secondMessages [lindex [lindex $calls 1] 1]
+
+        list \
+            $exitCode \
+            [llength $calls] \
+            [dict get [lindex $secondMessages 0] content] \
+            [dict get [lindex $secondMessages 1] content] \
+            [dict get [lindex $secondMessages 2] content] \
+            [expr {[string first "Available skills" \
+                [lindex [lindex $calls 0] 0]] >= 0}] \
+            [expr {[string first \
+                "assistant> second response" $output] >= 0}] \
+            [expr {[string first \
+                "Started a new conversation." $output] >= 0}] \
+            [expr {[string first "(empty)" $output] >= 0}] \
+            [expr {
+                [string first "fossil_merge" $output] >= 0
+                && [string first "read_file" $output] >= 0
+                && [string first "xml_validate" $output] >= 0
+            }] \
+            [expr {[string first \
+                "create-oodz-class - Create or modify NX domain classes" \
+                $output] >= 0}] \
+            [string trim $errors]
+    } finally {
+        close $inputChannel
+        close $outChannel
+        close $errChannel
+        file delete $inputPath $outPath $errPath
+        $client destroy
+    }
+} -result [list \
+    0 2 \
+    "first task" "first response" "second task" \
+    1 1 1 1 1 1 \
+    "Unknown command: /unknown (use /help)"]
+
+test cli-tool-1.1 {interactive tool command bypasses the LLM client} -body {
+    set client [::FakeLLMClient new {}]
+    set inputChannel [file tempfile inputPath]
+    set outChannel [file tempfile outPath]
+    set errChannel [file tempfile errPath]
+
+    try {
+        puts $inputChannel {/tool list_files {}}
+        puts $inputChannel /exit
+        flush $inputChannel
+        seek $inputChannel 0
+
+        set exitCode [::main \
+            $projectDir {} $client \
+            $outChannel $errChannel $inputChannel]
+        flush $outChannel
+        flush $errChannel
+        seek $outChannel 0
+        seek $errChannel 0
+        set output [read $outChannel]
+        set errors [read $errChannel]
+
+        list \
+            $exitCode \
+            [llength [$client getCalls]] \
+            [expr {[string length [string trim $output]] > 0}] \
+            [string trim $errors]
+    } finally {
+        close $inputChannel
+        close $outChannel
+        close $errChannel
+        file delete $inputPath $outPath $errPath
+        $client destroy
+    }
+} -result [list 0 0 1 ""]
+
+test cli-multiline-1.1 {multiline mode preserves lines and supports cancellation} -body {
+    set client [::FakeLLMClient new [list "multiline response"]]
+    set inputChannel [file tempfile inputPath]
+    set outChannel [file tempfile outPath]
+    set errChannel [file tempfile errPath]
+
+    try {
+        foreach line [list \
+            /multi \
+            {Create an NX class.} \
+            {} \
+            {  Preserve this indentation.} \
+            /send \
+            /multi \
+            {do not send this} \
+            /cancel \
+            /exit] {
+            puts $inputChannel $line
+        }
+        flush $inputChannel
+        seek $inputChannel 0
+
+        set exitCode [::main \
+            $projectDir {} $client \
+            $outChannel $errChannel $inputChannel]
+        flush $outChannel
+        seek $outChannel 0
+        set output [read $outChannel]
+        set calls [$client getCalls]
+        set task [dict get \
+            [lindex [lindex [lindex $calls 0] 1] end] content]
+
+        list \
+            $exitCode \
+            [llength $calls] \
+            $task \
+            [expr {[string first "Multiline mode:" $output] >= 0}] \
+            [expr {[string first "Multiline input cancelled." $output] >= 0}]
+    } finally {
+        close $inputChannel
+        close $outChannel
+        close $errChannel
+        file delete $inputPath $outPath $errPath
+        $client destroy
+    }
+} -result [list \
+    0 1 \
+    "Create an NX class.\n\n  Preserve this indentation." \
+    1 1]
+
+test cli-translation-1.1 {translation shortcut expands into a native-script task} -body {
+    set client [::FakeLLMClient new [list "translation prepared"]]
+    set inputChannel [file tempfile inputPath]
+    set outChannel [file tempfile outPath]
+    set errChannel [file tempfile errPath]
+
+    try {
+        puts $inputChannel {/oodz_trns Bottle}
+        puts $inputChannel /exit
+        flush $inputChannel
+        seek $inputChannel 0
+
+        set exitCode [::main \
+            $projectDir {} $client \
+            $outChannel $errChannel $inputChannel]
+        set calls [$client getCalls]
+        set task [dict get \
+            [lindex [lindex [lindex $calls 0] 1] end] content]
+
+        list \
+            $exitCode \
+            [llength $calls] \
+            [expr {[string first "Bottle" $task] >= 0}] \
+            [expr {[string first "Never transliterate" $task] >= 0}]
+    } finally {
+        close $inputChannel
+        close $outChannel
+        close $errChannel
+        file delete $inputPath $outPath $errPath
+        $client destroy
+    }
+} -result [list 0 1 1 1]
+
+test cli-history-1.1 {interactive history persists and new removes it} -body {
+    set directory [file normalize [file join \
+        [::tcltest::temporaryDirectory] cli-history-[pid]]]
+    file mkdir $directory
+    set historyPath [file join $directory history.json]
+    set firstClient [::FakeLLMClient new [list "first response"]]
+    set secondClient [::FakeLLMClient new [list "second response"]]
+
+    try {
+        foreach session {
+            {firstClient {{first task} /exit}}
+            {secondClient {{second task} /exit}}
+            {secondClient {/new /exit}}
+        } {
+            lassign $session clientName lines
+            set inputChannel [file tempfile inputPath]
+            set outChannel [file tempfile outPath]
+            set errChannel [file tempfile errPath]
+            try {
+                foreach line $lines {
+                    puts $inputChannel $line
+                }
+                flush $inputChannel
+                seek $inputChannel 0
+                ::main $projectDir {} [set $clientName] \
+                    $outChannel $errChannel $inputChannel $historyPath
+            } finally {
+                close $inputChannel
+                close $outChannel
+                close $errChannel
+                file delete $inputPath $outPath $errPath
+            }
+        }
+
+        set secondMessages [lindex \
+            [lindex [$secondClient getCalls] 0] 1]
+        list \
+            [lmap message $secondMessages {
+                dict get $message content
+            }] \
+            [file exists $historyPath]
+    } finally {
+        $firstClient destroy
+        $secondClient destroy
+        file delete -force $directory
+    }
+} -result [list \
+    [list "first task" "first response" "second task"] \
+    0]
+
+
+::finishTests

@@ -1,0 +1,260 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test fossil-status-1.1 {Fossil status uses one fixed bounded command} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-status-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" $runner]
+    try {
+        set result [$plugins invoke fossil_status \
+            [::json::write object]]
+        set call [lindex $::RunnerMock::calls 0]
+        set command [lindex $call 0]
+        set fossilDefinition {}
+        foreach definition [$plugins definitions] {
+            if {[dict get $definition name] eq "fossil_status"} {
+                set fossilDefinition $definition
+                break
+            }
+        }
+        list \
+            $result \
+            [file tail [lindex $command 0]] \
+            [lrange $command 1 end] \
+            [lindex $call 1] \
+            [lindex $call 2] \
+            [dict get $fossilDefinition parameters properties] \
+            [dict get $fossilDefinition parameters required]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    "sandboxed Tcl output" fossil [list status] 2500 4096 \
+    [dict create] [list]]
+
+test fossil-changes-1.1 {Fossil changes is concise and fixed} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-changes-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" $runner]
+    try {
+        set result [$plugins invoke fossil_changes \
+            [::json::write object]]
+        set call [lindex $::RunnerMock::calls 0]
+        list $result [lrange [lindex $call 0] 1 end]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list "sandboxed Tcl output" \
+    [list changes --classify --no-merge --rel-paths --verbose]]
+
+test fossil-branches-1.1 {Fossil branches lists all branches} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-branches-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" $runner]
+    try {
+        set result [$plugins invoke fossil_branches [::json::write object]]
+        set call [lindex $::RunnerMock::calls 0]
+        list $result [lrange [lindex $call 0] 1 end]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list "sandboxed Tcl output" [list branch list --all]]
+
+test fossil-branch-info-1.1 {Fossil branch info is bounded and fixed} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-branch-info-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" $runner]
+    try {
+        set result [$plugins invoke fossil_branch_info \
+            [::json::write object name [::json::write string "release/v2"]]]
+        set call [lindex $::RunnerMock::calls 0]
+        set emptyCode [catch {
+            $plugins invoke fossil_branch_info [::json::write object \
+                name [::json::write string "  "]]
+        } emptyMessage]
+        list $result [lrange [lindex $call 0] 1 end] \
+            $emptyCode $emptyMessage
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list "sandboxed Tcl output" \
+    [list branch info -- release/v2] \
+    1 "fossil_branch_info name must not be empty"]
+
+test fossil-extras-1.1 {Fossil extras is relative and fixed} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-extras-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" $runner]
+    try {
+        set result [$plugins invoke fossil_extras \
+            [::json::write object]]
+        set call [lindex $::RunnerMock::calls 0]
+        list $result [lrange [lindex $call 0] 1 end]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list "sandboxed Tcl output" [list extras --rel-paths]]
+
+test fossil-ls-1.1 {Fossil ls reports every managed file with status} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-ls-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" $runner]
+    try {
+        set result [$plugins invoke fossil_ls [::json::write object]]
+        set call [lindex $::RunnerMock::calls 0]
+        list $result [lrange [lindex $call 0] 1 end]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list "sandboxed Tcl output" [list ls --verbose]]
+
+test fossil-info-1.1 {Fossil info uses one fixed bounded command} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-info-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" $runner]
+    try {
+        set result [$plugins invoke fossil_info \
+            [::json::write object]]
+        set call [lindex $::RunnerMock::calls 0]
+        list \
+            $result \
+            [file tail [lindex [lindex $call 0] 0]] \
+            [lrange [lindex $call 0] 1 end] \
+            [lindex $call 1] [lindex $call 2]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    "sandboxed Tcl output" fossil [list info] 2500 4096]
+
+test fossil-diff-1.1 {Fossil diff is internal and path-confined} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-diff-[pid]]]
+    file mkdir [file join $root src]
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" $runner]
+    try {
+        set allResult [$plugins invoke fossil_diff \
+            [::json::write object]]
+        set fileResult [$plugins invoke fossil_diff [::json::write object \
+            path [::json::write string src/client.tcl]]]
+        set escapeCode [catch {
+            $plugins invoke fossil_diff [::json::write object \
+                path [::json::write string ../outside.tcl]]
+        } escapeMessage]
+        list \
+            $allResult \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            $fileResult \
+            [lrange [lindex [lindex $::RunnerMock::calls 1] 0] 1 end] \
+            $escapeCode $escapeMessage
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    "sandboxed Tcl output" [list diff -i] \
+    "sandboxed Tcl output" [list diff -i -- src/client.tcl] \
+    1 "Plugin path escapes the workspace"]
+
+test fossil-timeline-1.1 {Fossil timeline is concise and bounded} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-timeline-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" $runner]
+    try {
+        set defaultResult [$plugins invoke fossil_timeline \
+            [::json::write object]]
+        set selectedResult [$plugins invoke fossil_timeline \
+            [::json::write object limit 50]]
+        set excessiveCode [catch {
+            $plugins invoke fossil_timeline \
+                [::json::write object limit 101]
+        } excessiveMessage]
+        list \
+            $defaultResult \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            $selectedResult \
+            [lrange [lindex [lindex $::RunnerMock::calls 1] 0] 1 end] \
+            $excessiveCode $excessiveMessage
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    "sandboxed Tcl output" \
+    [list timeline -t ci -n 20 --oneline -q] \
+    "sandboxed Tcl output" \
+    [list timeline -t ci -n 50 --oneline -q] \
+    1 "fossil_timeline limit exceeds configured maximum: 100"]
+
+
+::finishTests
