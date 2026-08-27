@@ -31,6 +31,7 @@ proc ::plugins::fossil_common::positiveInteger {value label} {
 }
 
 proc ::plugins::fossil_common::run {settings arguments} {
-    ::PluginSupport::runConfiguredCommand \
-        [::plugins::fossil_common::executable $settings] $arguments
+    ::PluginSupport::formatProcessResult \
+        [::PluginSupport::runConfiguredCommand \
+            [::plugins::fossil_common::executable $settings] $arguments]
 }

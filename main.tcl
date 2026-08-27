@@ -15,6 +15,7 @@ set ::tclReadlineAvailable [expr {![catch {package require tclreadline 2.4}]}]
 
 source [file join $scriptDir clientClass.tcl]
 source [file join $scriptDir agentClass.tcl]
+source [file join $scriptDir pluginWorker.tcl]
 source [file join $scriptDir pluginRegistry.tcl]
 source [file join $scriptDir conversationStore.tcl]
 source [file join $scriptDir skillRegistry.tcl]
@@ -27,7 +28,7 @@ proc ::usage {} {
 
 proc ::buildAgentSystemRole {
     config workspaceInstructions {skillSummaries {}} {hierarchicalInstructions 0}
-    {runnerEnabled 0}
+    {runnerEnabled 0} {pluginLazyLoading 0}
 } {
     set systemRole [$config get Agent.role]
     if {$workspaceInstructions ne ""} {
@@ -73,7 +74,25 @@ proc ::buildAgentSystemRole {
             " run_tcl_file when execution is appropriate. Never claim code" \
             " was tested unless the runner succeeds."
     }
+    if {$pluginLazyLoading} {
+        append systemRole \
+            "\nOnly core and previously activated plugins are initially" \
+            " available. When the task needs another capability, call" \
+            " search_plugins with concise capability words. Matching" \
+            " plugins are activated for your next response."
+    }
     return $systemRole
+}
+
+proc ::parsePluginNames {configuredNames} {
+    set names {}
+    foreach configuredName [split $configuredNames ,] {
+        set configuredName [string trim $configuredName]
+        if {$configuredName ne "" && $configuredName ni $names} {
+            lappend names $configuredName
+        }
+    }
+    return $names
 }
 
 proc ::resolveWorkspaceRoot {scriptDir configuredRoot} {
@@ -515,6 +534,7 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
     set skillRegistry ""
     set instructionRegistry ""
     set processRunner ""
+    set pluginWorker ""
     set historyStore ""
     set logPath ""
     set ownsClient [expr {$clientObject eq ""}]
@@ -554,8 +574,13 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
         if {![string is boolean -strict $runnerEnabled]} {
             error "Runner.enabled must be boolean"
         }
+        set projectTestsEnabled false
         if {$runnerEnabled} {
-            set processRunner [tProcessRunner new $workspaceRoot [$config get Runner.tclsh tclsh9.0] [$config get Runner.backend direct] [$config get Runner.sandbox bwrap] [$config get Runner.timeout_ms 10000] [$config get Runner.max_output_chars 65536] "" [dict create fossil [$config get Executables.fossil fossil]]]
+            set processRunner [tProcessRunner new $workspaceRoot \
+                [$config get Runner.tclsh tclsh9.0] \
+                [$config get Runner.timeout_ms 10000] \
+                [$config get Runner.max_output_chars 65536] "" \
+                [dict create fossil [$config get Executables.fossil fossil]]]
             set projectTestsEnabled [$config get Runner.project_tests_enabled false]
             if {![string is boolean -strict $projectTestsEnabled]} {
                 error "Runner.project_tests_enabled must be boolean"
@@ -564,8 +589,41 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
                 $processRunner configureProjectTests [$config get Runner.project_tests_executable ""] [$config get Runner.project_tests_arguments ""] [$config get Runner.project_tests_timeout_ms 60000]
             }
         }
-        set pluginRegistry [tPluginRegistry new $workspaceRoot [::resolvePluginDirectories $scriptDir [$config get Plugins.directories ""]] [list ::requestPluginApproval $inChannel $errChannel] [$config get Plugins.timeout_ms 1000] [$config get Plugins.max_output_chars 65536] $referenceRoots $skillRegistry $instructionRegistry $processRunner]
-        set systemRole [::buildAgentSystemRole $config $workspaceInstructions [$skillRegistry summaries] [$instructionRegistry enabled] $runnerEnabled]
+        set pluginLazyLoading [$config get Plugins.lazy_loading true]
+        if {![string is boolean -strict $pluginLazyLoading]} {
+            error "Plugins.lazy_loading must be boolean"
+        }
+        set pluginCore [::parsePluginNames [$config get Plugins.core \
+            "read_file,list_files,search_files,file_info,apply_patch,write_file"]]
+        set pluginDirectories [::resolvePluginDirectories $scriptDir \
+            [$config get Plugins.directories ""]]
+        set workerEnabled [$config get Plugins.worker_thread true]
+        if {![string is boolean -strict $workerEnabled]} {
+            error "Plugins.worker_thread must be boolean"
+        }
+        if {$workerEnabled} {
+            set runnerConfig [dict create \
+                enabled $runnerEnabled \
+                tclsh [$config get Runner.tclsh tclsh9.0] \
+                timeout_ms [$config get Runner.timeout_ms 10000] \
+                max_output_chars [$config get Runner.max_output_chars 65536] \
+                executable_aliases [dict create fossil \
+                    [$config get Executables.fossil fossil]] \
+                project_tests_enabled $projectTestsEnabled \
+                project_tests_executable \
+                    [$config get Runner.project_tests_executable tclsh9.0] \
+                project_tests_arguments \
+                    [$config get Runner.project_tests_arguments tests/all.tcl] \
+                project_tests_timeout_ms \
+                    [$config get Runner.project_tests_timeout_ms 60000]]
+            set pluginWorker [tPluginWorker new \
+                $scriptDir $workspaceRoot $pluginDirectories \
+                [$config get Plugins.timeout_ms 1000] \
+                [$config get Plugins.max_output_chars 65536] \
+                $referenceRoots $runnerConfig]
+        }
+        set pluginRegistry [tPluginRegistry new $workspaceRoot $pluginDirectories [list ::requestPluginApproval $inChannel $errChannel] [$config get Plugins.timeout_ms 1000] [$config get Plugins.max_output_chars 65536] $referenceRoots $skillRegistry $instructionRegistry $processRunner $pluginLazyLoading $pluginCore "" $pluginWorker]
+        set systemRole [::buildAgentSystemRole $config $workspaceInstructions [$skillRegistry summaries] [$instructionRegistry enabled] $runnerEnabled $pluginLazyLoading]
         set codingAgent [tAgent new [$config get Agent.name] $systemRole $aiEngine $pluginRegistry [$config get Agent.max_iterations 16] [expr {$interactive ? [list ::printStreamChunk $outChannel] : ""}] [$config get Agent.max_history_messages 40] [$config get Agent.summarize_history false]]
 
         if {$interactive} {
@@ -620,7 +678,9 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
                 && [info object isa object $aiEngine]} {
             $aiEngine destroy
         }
-        foreach object [list $historyStore $instructionRegistry $skillRegistry $processRunner $pluginRegistry $backend $config] {
+        foreach object [list $historyStore $pluginRegistry $pluginWorker \
+                $instructionRegistry $skillRegistry $processRunner \
+                $backend $config] {
             if {$object ne "" && [info object isa object $object]} {
                 $object destroy
             }

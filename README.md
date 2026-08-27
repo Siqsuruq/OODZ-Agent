@@ -12,6 +12,7 @@ JavaScript.
 ## Requirements
 
 - Tcl 9.0 or newer
+- Tcl Thread package 3.0 or newer
 - Tcl TLS package (`tls`)
 - Tcllib packages:
   - `http`
@@ -32,7 +33,7 @@ Check the required runtime packages without making a network request:
 
 ```bash
 tclsh <<'EOF'
-foreach package {Tcl tls http json json::write fileutil} {
+foreach package {Tcl Thread tls http json json::write fileutil} {
     puts "$package [package require $package]"
 }
 EOF
@@ -72,14 +73,15 @@ max_iterations = 16
 root = .
 
 [Plugins]
+lazy_loading = true
+core = read_file,list_files,search_files,file_info,apply_patch,write_file
+worker_thread = true
 timeout_ms = 1000
 max_output_chars = 65536
 
 [Runner]
 enabled = false
 tclsh = tclsh9.0
-backend = direct
-sandbox = bwrap
 timeout_ms = 10000
 max_output_chars = 65536
 project_tests_enabled = false
@@ -137,6 +139,17 @@ Configuration fields:
   containing `main.tcl`. The built-in `plugins/` directory is always loaded.
   An optional private `[settings]` manifest section is passed only to the Tcl
   handler and is excluded from model-visible tool definitions.
+- `Plugins.lazy_loading`: When true, expose only `Plugins.core`, special
+  framework tools, and `search_plugins` to the model initially. A
+  `search_plugins` call searches plugin names and manifest descriptions, then
+  activates matching definitions for the following model response. Direct CLI
+  `/tool` calls can still invoke any installed plugin.
+- `Plugins.core`: Comma-separated plugin names that remain model-visible while
+  lazy loading is enabled. Startup fails if a configured name is not installed.
+- `Plugins.worker_thread`: Run validated and approved plugin handlers serially
+  in one persistent Tcl worker thread. The main thread retains metadata,
+  activation, validation, approvals, model coordination, and GUI state. This
+  improves responsiveness but is not an operating-system security boundary.
 - `Skills.directories`: Optional comma-separated personal skill directories.
   The built-in `skills/` directory is always loaded first.
 - `Skills.max_file_bytes`: Maximum size of one `SKILL.md`; defaults to 65536.
@@ -144,9 +157,6 @@ Configuration fields:
   bundled Fossil plugins. The default resolves `fossil` through `PATH`.
 - `Runner.enabled`: Expose or remove the controlled `run_tcl_file` tool.
 - `Runner.tclsh`: Fixed Tcl interpreter executable used by the runner.
-- `Runner.backend`: `direct` for portable unsandboxed execution or
-  `bubblewrap` for optional Linux containment.
-- `Runner.sandbox`: Bubblewrap executable used only by that backend.
 - `Runner.timeout_ms`: Maximum execution time for a Tcl process.
 - `Runner.max_output_chars`: Maximum combined standard output/error returned.
 - `Runner.project_tests_enabled`: Expose the fixed `run_project_tests` profile.
@@ -159,6 +169,25 @@ Configuration fields:
   immediate package directories before selecting the theme.
 - `GUI.theme`: Optional installed Ttk theme name. Leave it empty to use the
   platform default; the example selects the bundled `Arc-Dark` theme.
+
+Plugin manifests may add optional discovery metadata:
+
+```ini
+[plugin]
+name = archive_create
+description = Create a ZIP archive from a workspace directory.
+category = archive
+keywords = zip,compress,bundle,backup
+platforms = linux,freebsd,windows
+requires = helper-command
+```
+
+`category` and `keywords` participate in `search_plugins`. `platforms` accepts
+`all`, `linux`, `freebsd`, and `windows`; it defaults to `all`. `requires` is a
+comma-separated list of executables that must resolve through `PATH`. Plugins
+whose platform or executable requirements are unavailable are retained in the
+registry's unavailable index but are not exposed or invokable. These fields
+are optional, so existing personal manifests remain compatible.
 
 When both Arc variants are installed, the GUI action bar provides a runtime
 **Dark** toggle. It changes the current session only; `GUI.theme` remains the
@@ -244,27 +273,23 @@ The portable default is:
 ```ini
 [Runner]
 enabled = true
-backend = direct
 tclsh = tclsh9.0
 timeout_ms = 10000
 max_output_chars = 65536
 ```
 
-The direct backend enforces the selected file, timeout, and returned-output
+The portable runner enforces the selected file, timeout, and returned-output
 limit, but it provides **no filesystem, process, account, environment, or
 network isolation**.
 
-An optional Linux configuration is `backend = bubblewrap`. That backend adds:
+Internally, runner methods return a Tcl dictionary containing `status`,
+`exit_code`, `output`, `duration_ms`, `timed_out`, and `output_truncated`.
+Plugins inspect that native result and decide what concise text to return to
+the model; JSON serialization is not required.
 
-- the workspace mounted writable at `/workspace`;
-- runtime libraries mounted read-only;
-- isolated network, PID, IPC, UTS, user, and cgroup namespaces;
-- an ephemeral `/tmp`;
-- no home-directory mount;
-- bounded execution time and combined output.
-
-Disable execution completely with `Runner.enabled = false`. Bubblewrap must be
-installed and permitted by the host kernel only when its backend is selected.
+OS isolation is deliberately outside the portable core. It can be provided by
+optional platform-specific plugins, such as Bubblewrap on Linux or jails on
+FreeBSD. Disable execution completely with `Runner.enabled = false`.
 
 #### Fixed project-test profile
 
@@ -281,8 +306,8 @@ project_tests_timeout_ms = 60000
 The model can call `run_project_tests` with an empty argument object, but cannot
 change the executable or arguments. Arguments use Tcl list syntax, not shell
 syntax, so pipes, redirections, substitutions, and command separators are not
-interpreted. The profile uses the same direct/Bubblewrap backend and output
-limit as `run_tcl_file`, and always requires a separate approval.
+interpreted. The profile uses the same direct runner and output limit as
+`run_tcl_file`, and always requires a separate approval.
 
 Run it directly in interactive mode with:
 
@@ -382,7 +407,7 @@ headers such as `Host`, `Content-Length`, `Transfer-Encoding`, `Connection`,
 The read-only `fossil_status` plugin runs the fixed command `fossil status` in
 the configured workspace. The model cannot select another command, argument,
 or working directory. Execution uses the controlled process runner and inherits
-its timeout, output limit, and direct or Bubblewrap backend.
+its timeout and output limit.
 
 ```text
 /tool fossil_status {}
@@ -699,12 +724,30 @@ tclsh /path/to/oodz_agent/main.tcl "Write a simple puts loop."
 Run the complete project test suite:
 
 ```bash
-tclsh tests/all.tcl
+tclsh9.0 tests/all.tcl
 ```
 
 The tests use fake clients and transports. They do not require a real API key and
 do not make network calls. The command returns a non-zero exit status if any
 project test fails.
+
+Each area is also independently runnable:
+
+```bash
+# One test file
+tclsh9.0 tests/plugin_registry.test
+
+# One or more named tests
+tclsh9.0 tests/plugin_registry.test \
+  -match 'plugins-metadata-* plugins-lazy-*'
+
+# Select one file through the aggregate runner
+tclsh9.0 tests/all.tcl -file agent.test
+```
+
+Shared fake clients, transports, mocks, constraints, and temporary-directory
+handling live in `tests/support.tcl`. Test fixtures remain under
+`tests/fixtures/`.
 
 Tests shipped inside `lib/` belong to the bundled dependencies and are not part
 of this project verification command.
@@ -712,7 +755,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 107 Passed 107 Skipped 0 Failed 0
+all.tcl: Total 118 Passed 118 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the

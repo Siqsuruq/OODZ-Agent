@@ -22,5 +22,5 @@ proc ::plugins::fossil_branch_reopen::execute {
         error "fossil_branch_reopen name contains a null character"
     }
     ::plugins::fossil_common::run $settings \
-        [list branch reopen --nosync -- $name]
+        [list branch reopen -- $name]
 }

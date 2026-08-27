@@ -22,5 +22,5 @@ proc ::plugins::fossil_branch_close::execute {
         error "fossil_branch_close name contains a null character"
     }
     ::plugins::fossil_common::run $settings \
-        [list branch close --nosync -- $name]
+        [list branch close -- $name]
 }

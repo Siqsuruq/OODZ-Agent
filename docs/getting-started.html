@@ -27,13 +27,14 @@
           <ul>
             <li>Tcl 9.0 or newer</li>
             <li>Tcl TLS package</li>
+            <li>Tcl Thread package 3.0 or newer</li>
             <li>Tcllib packages: <code>http</code>, <code>json</code>, <code>json::write</code>, and <code>fileutil</code></li>
             <li><code>Twapi</code> (needed for colorful output under Windows)
           </ul>
           <p>The repository includes <code>inifile</code>, <code>tConfClass</code>, <code>tLogger</code>, and <code>zesty</code>.</p>
 
           <div class="code-block"><header><span>Check packages</span><span>shell</span></header><pre><code>tclsh &lt;&lt;'EOF'
-foreach package {Tcl tls http json json::write fileutil} {
+foreach package {Tcl Thread tls http json json::write fileutil} {
     puts "$package [package require $package]"
 }
 EOF</code></pre></div>
@@ -73,6 +74,9 @@ root =
 
 [Plugins]
 directories =
+lazy_loading = true
+core = read_file,list_files,search_files,file_info,apply_patch,write_file
+worker_thread = true
 timeout_ms = 10000
 max_output_chars = 65536
 
@@ -94,8 +98,6 @@ theme = Arc-Dark
 [Runner]
 enabled = false
 tclsh = tclsh9.0
-backend = direct
-sandbox = bwrap
 timeout_ms = 10000
 max_output_chars = 65536
 project_tests_enabled = false
@@ -136,6 +138,8 @@ retry_delay_ms = 250</code>
 <p><code>Workspace.instructions</code> specifies an optional UTF-8 instruction file. The root-level file is included with every request. When modifying nested files, <code>load_project_instructions</code> locates relevant instruction files by traversing from the workspace root down to the target directory. Instructions closer to the target refine or override conventions for that subtree. Leave the setting empty to disable project instructions entirely.</p>
 <hr>
 <p><code>Plugins.directories</code> accepts a comma-separated list of absolute or installation-relative paths to personal plugin directories. Each specified directory must already exist.</p>
+<p>With <code>Plugins.lazy_loading</code> enabled, only the comma-separated <code>Plugins.core</code> set and <code>search_plugins</code> are initially exposed to the model. Plugin manifests form a searchable index; matching tools are activated for the model's next response. The interactive <code>/tool</code> command can still invoke any installed plugin directly.</p>
+<p><code>Plugins.worker_thread = true</code> runs plugin handlers serially in one persistent Tcl worker thread. The main thread retains tool metadata, validation, approvals, model coordination, and Tk state. This keeps the event loop responsive but does not provide operating-system isolation.</p>
 <hr>
 <p><code>Skills.directories</code> accepts a comma-separated list of personal skill directories. Skill names and their trigger descriptions are included in the system prompt; full instructions are loaded only when the model invokes <code>load_skill</code>.
 The built-in <code>skills/</code> directory is always loaded; additional personal skill roots can be placed anywhere and are specified via <code>Skills.directories</code>.
@@ -156,7 +160,7 @@ The built-in <code>skills/</code> directory is always loaded; additional persona
 
           <blockquote class="notice warning"><strong>Danger: this is not a safe agent.</strong> The default <code>direct</code> runner executes AI-created Tcl with the same operating-system permissions as the user. It can read, modify, or delete accessible files, start processes, access the network, and inspect environment variables. Enable it only if you understand the consequences and maintain recoverable backups or version control.</blockquote>
 
-          <p><code>run_tcl_file</code> accepts only an approved workspace-relative Tcl file and enforces time/output limits, but the <code>direct</code> backend provides no OS isolation. Every execution receives a separate approval; “All for session” does not apply. Linux users may select <code>Runner.backend = bubblewrap</code> for optional containment. Set <code>Runner.enabled = false</code> to remove execution entirely.</p>
+          <p><code>run_tcl_file</code> accepts only an approved workspace-relative Tcl file and enforces time/output limits, but direct execution provides no OS isolation. Every execution receives a separate approval; “All for session” does not apply. Platform-specific isolation belongs in optional plugins, such as Bubblewrap on Linux or jails on FreeBSD. Set <code>Runner.enabled = false</code> to remove execution entirely.</p>
           <p>Enable <code>Runner.project_tests_enabled</code> to expose <code>run_project_tests</code>. Its executable and Tcl-list arguments come only from trusted configuration; the model supplies no command fields. The profile uses the same backend and always requires separate approval.</p>
 </section>
 

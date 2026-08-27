@@ -1,5 +1,5 @@
 ::oo::class create tProcessRunner {
-    variable workspaceRoot tclExecutable backend sandboxExecutable
+    variable workspaceRoot tclExecutable
     variable timeoutMs maxOutput executor channel output done overflow
     variable processIds watchdog terminationReason
     variable projectTestsEnabled projectTestsExecutable
@@ -7,8 +7,8 @@
     variable executableAliases
 
     constructor {
-        configuredWorkspaceRoot configuredTclExecutable configuredBackend
-        configuredSandboxExecutable configuredTimeoutMs configuredMaxOutput
+        configuredWorkspaceRoot configuredTclExecutable
+        configuredTimeoutMs configuredMaxOutput
         {configuredExecutor ""} {configuredExecutableAliases {}}
     } {
         set workspaceRoot [file normalize $configuredWorkspaceRoot]
@@ -17,15 +17,6 @@
         }
         set tclExecutable [my resolveExecutable \
             $configuredTclExecutable "Runner.tclsh"]
-        set backend [string tolower [string trim $configuredBackend]]
-        if {$backend ni {direct bubblewrap}} {
-            error "Runner.backend must be one of: direct, bubblewrap"
-        }
-        set sandboxExecutable ""
-        if {$backend eq "bubblewrap"} {
-            set sandboxExecutable [my resolveExecutable \
-                $configuredSandboxExecutable "Runner.sandbox"]
-        }
         if {![string is entier -strict $configuredTimeoutMs]
                 || $configuredTimeoutMs <= 0} {
             error "Runner timeout must be a positive integer"
@@ -76,7 +67,7 @@
     }
 
     method mode {} {
-        return $backend
+        return direct
     }
 
     method configureProjectTests {
@@ -104,9 +95,8 @@
         if {!$projectTestsEnabled} {
             error "Project test profile is not configured"
         }
-        set command [my wrapCommand \
-            [list $projectTestsExecutable {*}$projectTestsArguments] \
-            $projectTestsTimeout]
+        set command [list \
+            $projectTestsExecutable {*}$projectTestsArguments]
         if {$executor ne ""} {
             return [{*}$executor $command $projectTestsTimeout $maxOutput]
         }
@@ -124,8 +114,7 @@
         }
         set executable [my resolveExecutable \
             $configuredExecutable "Plugin executable"]
-        set command [my wrapCommand \
-            [list $executable {*}$arguments] $timeoutMs]
+        set command [list $executable {*}$arguments]
         if {$executor ne ""} {
             return [{*}$executor $command $timeoutMs $maxOutput]
         }
@@ -145,44 +134,7 @@
             error "Tcl runner accepts only .tcl files"
         }
 
-        set scriptPath [expr {$backend eq "direct"
-            ? $path
-            : [file join /workspace $relativePath]}]
-        return [my wrapCommand \
-            [list $tclExecutable $scriptPath] $timeoutMs]
-    }
-
-    method wrapCommand {profileCommand executionTimeout} {
-        if {$backend eq "direct"} {
-            return $profileCommand
-        }
-        set command [list \
-            $sandboxExecutable \
-            --die-with-parent \
-            --unshare-all \
-            --new-session \
-            --ro-bind /usr /usr]
-        foreach runtimeRoot {/lib /lib64} {
-            if {[file exists $runtimeRoot]} {
-                lappend command --ro-bind $runtimeRoot $runtimeRoot
-            }
-        }
-        if {[file isfile /etc/ld.so.cache]} {
-            lappend command \
-                --dir /etc \
-                --ro-bind /etc/ld.so.cache /etc/ld.so.cache
-        }
-        lappend command \
-            --dev /dev \
-            --proc /proc \
-            --tmpfs /tmp \
-            --bind $workspaceRoot /workspace \
-            --chdir /workspace \
-            /usr/bin/timeout \
-            --kill-after=1 \
-            [format %.3f [expr {$executionTimeout / 1000.0}]] \
-            {*}$profileCommand
-        return $command
+        return [list $tclExecutable $path]
     }
 
     method execute {command {executionTimeout ""}} {
@@ -193,6 +145,7 @@
         set done 0
         set overflow 0
         set terminationReason ""
+        set startedAt [clock milliseconds]
         set pipeline [concat [list |] $command [list 2>@1]]
         set previousDirectory [pwd]
         try {
@@ -205,39 +158,45 @@
             -blocking 0 -translation binary -encoding iso8859-1
         set processIds [pid $channel]
         fileevent $channel readable [list [self] collectOutput]
-        set watchdogDelay [expr {$backend eq "direct"
-            ? $executionTimeout
-            : $executionTimeout + 2000}]
-        set watchdog [after $watchdogDelay \
+        set watchdog [after $executionTimeout \
             [list [self] terminate timeout]]
         vwait [namespace which -variable done]
         after cancel $watchdog
 
+        catch {fconfigure $channel -blocking 1}
         set closeCode [catch {close $channel} closeMessage closeOptions]
         set channel ""
-        if {$overflow} {
-            error "Runner output exceeds limit"
-        }
-        if {$terminationReason eq "timeout"} {
-            error "Runner timed out after $executionTimeout ms"
-        }
+        set durationMs [expr {[clock milliseconds] - $startedAt}]
         set text [my decodeOutput $output]
+        set exitCode 0
         if {$closeCode} {
             if {[dict exists $closeOptions -errorcode]} {
                 set errorCode [dict get $closeOptions -errorcode]
-                if {[lindex $errorCode 0] eq "CHILDSTATUS"
-                        && [lindex $errorCode 2] in {124 137}} {
-                    error "Runner timed out after $timeoutMs ms"
+                if {[lindex $errorCode 0] eq "CHILDSTATUS"} {
+                    set exitCode [lindex $errorCode 2]
                 }
             }
             set text [string trim $text]
             if {$text eq ""} {
                 set text $closeMessage
             }
-            error "Tcl process failed: $text"
         }
         set text [string trimright $text "\n"]
-        expr {$text eq "" ? "(process completed with no output)" : $text}
+        set status [expr {$closeCode ? "failed" : "exited"}]
+        if {$terminationReason eq "timeout"} {
+            set status timeout
+            set exitCode ""
+        } elseif {$overflow} {
+            set status output_limit
+            set exitCode ""
+        }
+        return [dict create \
+            status $status \
+            exit_code $exitCode \
+            output $text \
+            duration_ms $durationMs \
+            timed_out [expr {$status eq "timeout"}] \
+            output_truncated $overflow]
     }
 
     method collectOutput {} {

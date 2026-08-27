@@ -21,7 +21,9 @@
           <tr><td><code>main.tcl</code></td><td>Configuration, object wiring, interactive commands, presentation, and process exit codes.</td></tr>
           <tr><td><code>agentClass.tcl</code></td><td>Conversation memory and the bounded model/tool execution loop.</td></tr>
           <tr><td><code>clientClass.tcl</code></td><td>DeepSeek and Ollama payloads, HTTP/TLS, SSE streaming, parsing, fallback, and retry behavior.</td></tr>
-          <tr><td><code>pluginRegistry.tcl</code></td><td>Plugin discovery, validation, approval, sandboxing, and invocation.</td></tr>
+          <tr><td><code>pluginRegistry.tcl</code></td><td>Plugin discovery, metadata, lazy exposure, validation, approval, and invocation routing.</td></tr>
+          <tr><td><code>pluginWorker.tcl</code></td><td>Persistent Tcl worker thread, asynchronous result protocol, and event-loop-friendly compatibility calls.</td></tr>
+          <tr><td><code>processRunner.tcl</code></td><td>Portable direct process execution with workspace selection, trusted commands, timeouts, output limits, cross-platform termination, and native Tcl-dict results.</td></tr>
           <tr><td><code>conversationStore.tcl</code></td><td>Versioned JSON persistence with atomic writes.</td></tr>
         </tbody></table></div></section>
         <section id="agent-loop"><h2>Agent loop</h2><ol><li>Combine stored history with the new user task.</li><li>Send messages and plugin schemas to the configured provider.</li><li>Append the assistant message.</li><li>Execute requested plugins and append their results.</li><li>Repeat until final content arrives or the iteration limit is reached.</li><li>Commit and persist history only after success.</li></ol></section>

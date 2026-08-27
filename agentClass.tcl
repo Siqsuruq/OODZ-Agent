@@ -71,9 +71,10 @@
     }
 
     method runAgentLoop {messages} {
-        set tools [$pluginRegistry definitions]
-
         for {set iteration 1} {$iteration <= $maxIterations} {incr iteration} {
+            # Plugin discovery may activate additional definitions between
+            # model turns, so take a fresh snapshot on every iteration.
+            set tools [$pluginRegistry definitions]
             set activeMessages [dict get [my messageWindow $messages] included]
             if {$streamCallback ne "" && "queryMessageStream" in [info object methods $llmClient -all]} {
                 set assistantMessage [$llmClient queryMessageStream $systemRole $activeMessages $tools $streamCallback]
@@ -99,7 +100,7 @@
                 $log log info "Executing plugin: $toolName"
 
                 if {[catch {
-                    $pluginRegistry invoke $toolName $arguments
+                    $pluginRegistry invokeForModel $toolName $arguments
                 } toolResult]} {
                     set toolResult "Plugin error: $toolResult"
                     $log log warn "Plugin failed: $toolName: $toolResult"

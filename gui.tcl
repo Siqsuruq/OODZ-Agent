@@ -9,6 +9,7 @@ namespace eval ::oodzGui {
     variable skillRegistry ""
     variable instructionRegistry ""
     variable processRunner ""
+    variable pluginWorker ""
     variable config ""
     variable backend ""
     variable historyStore ""
@@ -324,8 +325,8 @@ proc ::oodzGui::showTools {} {
 
 proc ::oodzGui::close {} {
     foreach name {
-        agent historyStore instructionRegistry skillRegistry processRunner \
-        registry client backend config
+        agent historyStore registry pluginWorker instructionRegistry \
+        skillRegistry processRunner client backend config
     } {
         variable $name
         set object [set $name]
@@ -499,6 +500,7 @@ proc ::oodzGui::start {} {
     variable skillRegistry
     variable instructionRegistry
     variable processRunner
+    variable pluginWorker
     variable config
     variable backend
     variable historyStore
@@ -530,8 +532,11 @@ proc ::oodzGui::start {} {
     if {![string is boolean -strict $runnerEnabled]} {
         error "Runner.enabled must be boolean"
     }
+    set projectTestsEnabled false
     if {$runnerEnabled} {
-        set processRunner [tProcessRunner new $workspaceRoot [$config get Runner.tclsh tclsh9.0] [$config get Runner.backend direct] [$config get Runner.sandbox bwrap] [$config get Runner.timeout_ms 10000] \
+        set processRunner [tProcessRunner new $workspaceRoot \
+            [$config get Runner.tclsh tclsh9.0] \
+            [$config get Runner.timeout_ms 10000] \
             [$config get Runner.max_output_chars 65536] "" \
             [dict create fossil [$config get Executables.fossil fossil]]]
         set projectTestsEnabled [$config get Runner.project_tests_enabled false]
@@ -542,9 +547,45 @@ proc ::oodzGui::start {} {
             $processRunner configureProjectTests [$config get Runner.project_tests_executable ""] [$config get Runner.project_tests_arguments ""] [$config get Runner.project_tests_timeout_ms 60000]
         }
     }
-    set registry [tPluginRegistry new $workspaceRoot [::resolvePluginDirectories $scriptDir [$config get Plugins.directories ""]] ::oodzGui::approve [$config get Plugins.timeout_ms 1000] \
-        [$config get Plugins.max_output_chars 65536] $referenceRoots $skillRegistry $instructionRegistry $processRunner]
-    set agent [tAgent new [$config get Agent.name] [::buildAgentSystemRole $config $instructions [$skillRegistry summaries] [$instructionRegistry enabled] $runnerEnabled] \
+    set pluginLazyLoading [$config get Plugins.lazy_loading true]
+    if {![string is boolean -strict $pluginLazyLoading]} {
+        error "Plugins.lazy_loading must be boolean"
+    }
+    set pluginCore [::parsePluginNames [$config get Plugins.core \
+        "read_file,list_files,search_files,file_info,apply_patch,write_file"]]
+    set pluginDirectories [::resolvePluginDirectories $scriptDir \
+        [$config get Plugins.directories ""]]
+    set workerEnabled [$config get Plugins.worker_thread true]
+    if {![string is boolean -strict $workerEnabled]} {
+        error "Plugins.worker_thread must be boolean"
+    }
+    if {$workerEnabled} {
+        set runnerConfig [dict create \
+            enabled $runnerEnabled \
+            tclsh [$config get Runner.tclsh tclsh9.0] \
+            timeout_ms [$config get Runner.timeout_ms 10000] \
+            max_output_chars [$config get Runner.max_output_chars 65536] \
+            executable_aliases [dict create fossil \
+                [$config get Executables.fossil fossil]] \
+            project_tests_enabled $projectTestsEnabled \
+            project_tests_executable \
+                [$config get Runner.project_tests_executable tclsh9.0] \
+            project_tests_arguments \
+                [$config get Runner.project_tests_arguments tests/all.tcl] \
+            project_tests_timeout_ms \
+                [$config get Runner.project_tests_timeout_ms 60000]]
+        set pluginWorker [tPluginWorker new \
+            $scriptDir $workspaceRoot $pluginDirectories \
+            [$config get Plugins.timeout_ms 1000] \
+            [$config get Plugins.max_output_chars 65536] \
+            $referenceRoots $runnerConfig]
+    }
+    set registry [tPluginRegistry new $workspaceRoot $pluginDirectories \
+        ::oodzGui::approve [$config get Plugins.timeout_ms 1000] \
+        [$config get Plugins.max_output_chars 65536] $referenceRoots \
+        $skillRegistry $instructionRegistry $processRunner \
+        $pluginLazyLoading $pluginCore "" $pluginWorker]
+    set agent [tAgent new [$config get Agent.name] [::buildAgentSystemRole $config $instructions [$skillRegistry summaries] [$instructionRegistry enabled] $runnerEnabled $pluginLazyLoading] \
         $client $registry [$config get Agent.max_iterations 16] ::oodzGui::streamChunk [$config get Agent.max_history_messages 40] [$config get Agent.summarize_history false]]
     set historyPath [$config get Agent.history_file .oodz/history.json]
     if {[file pathtype $historyPath] ne "absolute"} {

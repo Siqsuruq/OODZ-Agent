@@ -41,11 +41,15 @@
         <section id="manifest"><h2>Manifest</h2><div class="code-block"><header><span>plugin.ini</span><span>ini</span></header><pre><code>[plugin]
 name = my_tool
 description = Explain clearly when the model should use this tool.
+category = filesystem
+keywords = inspect,file,workspace
+platforms = linux,freebsd,windows
+requires = optional-helper
 permission = read
 entrypoint = plugin.tcl
 handler = ::plugins::my_tool::execute
 parameters = {"type":"object","properties":{},"required":[],"additionalProperties":false}</code></pre></div>
-          <p>The JSON schema is shown to the model and also validates arguments before execution. Names must be unique.</p></section>
+          <p>The JSON schema is shown to the model and also validates arguments before execution. Names must be unique. The optional <code>category</code> and comma-separated <code>keywords</code> improve lazy plugin search. <code>platforms</code> accepts <code>all</code>, <code>linux</code>, <code>freebsd</code>, and <code>windows</code>; <code>requires</code> lists executables that must resolve through <code>PATH</code>. Incompatible plugins remain listed as unavailable and are never exposed to the model.</p></section>
         <section id="handler"><h2>Tcl handler</h2><div class="code-block"><header><span>plugin.tcl</span><span>tcl</span></header><pre><code>namespace eval ::plugins::my_tool {}
 
 proc ::plugins::my_tool::execute {workspaceRoot arguments settings} {
