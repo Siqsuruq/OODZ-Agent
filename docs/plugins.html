@@ -14,31 +14,33 @@
   <main class="container py-5">
     <div class="section-heading"><span>Tools</span><h1 class="display-4">Plugin development</h1><p class="lead text-secondary">Extend the agent with declarative schemas and small Tcl handlers.</p></div>
     <div class="docs-shell">
-      <aside class="docs-sidebar"><nav class="nav flex-column"><a class="nav-link" href="#built-in">Built-in tools</a><a class="nav-link" href="#layout">Directory layout</a><a class="nav-link" href="#manifest">Manifest</a><a class="nav-link" href="#handler">Handler</a><a class="nav-link" href="#safety">Safety</a></nav></aside>
+      <aside class="docs-sidebar"><nav class="nav flex-column"><a class="nav-link" href="#about">About</a><a class="nav-link" href="#layout">Directory layout</a><a class="nav-link" href="#manifest">Manifest</a><a class="nav-link" href="#handler">Handler</a><a class="nav-link" href="#safety">Safety</a><a class="nav-link" href="#built-in">Built-in tools</a></nav></aside>
       <article class="docs-content">
-        <section id="built-in"><h2>Built-in tools</h2><div class="row g-3">
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>read_file</code></h3><p>Read one UTF-8 workspace file.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>list_files</code></h3><p>List files at a workspace-relative path.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>search_files</code></h3><p>Recursive, case-insensitive literal text search.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>file_info</code></h3><p>Inspect path type, size, modification time, and permissions.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>xml_validate</code></h3><p>Validate UTF-8 XML and report its root element using tDOM.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>oodz_lookup</code></h3><p>Search a compact, source-linked index of OODZ framework capabilities.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>oodz_read</code></h3><p>Read up to 200 numbered UTF-8 lines from the configured OODZ source root.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>oodz_search</code></h3><p>Recursively search OODZ source with bounded path, line, and preview results.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>save_translation</code></h3><p>Validate and POST six translations to the fixed SaaS endpoint, with dry-run support.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>make_directory</code></h3><p>Create directories and missing parents after explicit approval.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>edit_file</code></h3><p>Replace one unique exact text fragment after explicit approval.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>apply_patch</code></h3><p>Atomically apply exact SEARCH/REPLACE blocks.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>copy_file</code></h3><p>Copy a file without overwriting an existing destination.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>move_file</code></h3><p>Move or rename a file without overwriting.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>delete_file</code></h3><p>Delete one file; directory deletion is refused.</p></div></div></div>
-          <div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>write_file</code></h3><p>Write UTF-8 content after explicit user approval.</p></div></div></div>
-        </div></section>
-        <section id="layout"><h2>Directory layout</h2><div class="file-tree">plugins/
+        
+		<section id="about">
+			<h2>About</h2>
+			<p>Plugins are the true strength of this agent. While the core system provides the brain, plugins give the agent its hands, feet, and specialized tools. Thanks to the simplicity of Tcl language and INI configuration, building a plugin is incredibly straightforward. If you can write a basic script and configure a few lines of text, you can extend the agent's capabilities in minutes.</p>
+		</section>
+
+		
+        <section id="layout">
+			<h2>Directory layout</h2>
+			<p>Plugins are completely modular. To create one, simply drop a single folder containing your <code>.ini</code> and <code>.tcl</code> files into the main plugins directory.</p>
+			<div class="file-tree">plugins/
 └── my_tool/
     ├── plugin.ini
-    └── plugin.tcl</div><p class="mt-3">Discovery is deterministic and loads only direct children of configured plugin directories.</p></section>
-        <section id="manifest"><h2>Manifest</h2><div class="code-block"><header><span>plugin.ini</span><span>ini</span></header><pre><code>[plugin]
+    └── plugin.tcl</div>
+			<p class="mt-3"><strong>How loading works:</strong> Discovery is strictly deterministic. The system scans the <code>plugins/</code> root and registers only the direct child folders. Subfolders inside <code>my_tool/</code> are ignored during initial discovery, keeping loading fast and predictable.</p>
+			
+		</section>
+        
+		<section id="manifest">
+			<h2>Manifest</h2>
+			<p>
+				The manifest tells the agent exactly who you are, what your tool does, and when to use it. It defines the contract between your Tcl script and the AI model.
+			</p>
+			<div class="code-block">
+			<header><span>plugin.ini</span><span>ini</span></header><pre><code>[plugin]
 name = my_tool
 description = Explain clearly when the model should use this tool.
 category = filesystem
@@ -48,17 +50,74 @@ requires = optional-helper
 permission = read
 entrypoint = plugin.tcl
 handler = ::plugins::my_tool::execute
-parameters = {"type":"object","properties":{},"required":[],"additionalProperties":false}</code></pre></div>
-          <p>The JSON schema is shown to the model and also validates arguments before execution. Names must be unique. The optional <code>category</code> and comma-separated <code>keywords</code> improve lazy plugin search. <code>platforms</code> accepts <code>all</code>, <code>linux</code>, <code>freebsd</code>, and <code>windows</code>; <code>requires</code> lists executables that must resolve through <code>PATH</code>. Incompatible plugins remain listed as unavailable and are never exposed to the model.</p></section>
-        <section id="handler"><h2>Tcl handler</h2><div class="code-block"><header><span>plugin.tcl</span><span>tcl</span></header><pre><code>namespace eval ::plugins::my_tool {}
+parameters = {"type":"object","properties":{},"required":[],"additionalProperties":false}</code></pre>
+			</div>
+			<h3>Key Configurations Explained:</h3>
+			<dl>
+				<dt><strong>Smart Tool Selection</strong></dt>
+				<dd>The <code>description</code>, <code>category</code>, and comma-separated <code>keywords</code> enable lazy plugin searching, helping the model find your tool instantly when needed.</dd>
+
+				<dt><strong>Strict Argument Validation</strong></dt>
+				<dd>The <code>parameters</code> block uses standard JSON Schema. It is shown directly to the model to guide its reasoning and automatically rejects invalid payloads before your script even runs.</dd>
+
+				<dt><strong>Cross-Platform Protection</strong></dt>
+				<dd>Specify OS targets with <code>platforms</code> (accepts <code>all</code>, <code>linux</code>, <code>freebsd</code>, or <code>windows</code>). If a user is on an unsupported system, the tool safely registers as unavailable.</dd>
+
+				<dt><strong>Binary Dependencies</strong></dt>
+				<dd>Use <code>requires</code> to list external executables that must exist in the user's system <code>PATH</code>.</dd>
+
+				<dt><strong>Tcl Routing</strong></dt>
+				<dd><code>entrypoint</code> defines the script file to source, while <code>handler</code> points to the exact Tcl namespace procedure triggered upon execution.</dd>
+			</dl>
+			<p><small><strong>Note:</strong> Plugin <code>name</code> keys must be globally unique. Incompatible or failing plugins will never be exposed to the model.</small></p>
+		</section>
+        
+		<section id="handler">
+			<h2>Tcl handler</h2>
+			<p>
+				The handler is the operational core of your plugin. Written in clean, lightweight Tcl, it receives structured inputs from the model and returns text results back to the system.
+			</p>
+			<div class="code-block">
+			<header><span>plugin.tcl</span><span>tcl</span></header><pre><code>namespace eval ::plugins::my_tool {}
 
 proc ::plugins::my_tool::execute {workspaceRoot arguments settings} {
     return "Tool result"
-}</code></pre></div>
-          <p><code>workspaceRoot</code> is the configured project root, <code>arguments</code> is the validated model-provided dictionary, and <code>settings</code> contains trusted values from the plugin's optional <code>[settings]</code> section. Settings are not included in model-visible tool definitions or logged automatically. Return concise text suitable for sending back to the model, and never return secrets.</p></section>
-        <section id="safety"><h2>Safety boundary</h2><ul><li>Filesystem paths remain inside the configured workspace.</li><li>Reference tools such as <code>oodz_read</code> use separate named read-only roots.</li><li>Write plugins require confirmation for each call.</li><li>Child interpreters enforce execution deadlines and result limits.</li><li>Manifest paths and workspace paths reject escapes.</li><li>Installed Tcl plugins are trusted local code and must be reviewed before installation.</li></ul></section>
-        <section id="http"><h2>Scoped HTTP tools</h2><p>The built-in <code>http_get</code>, <code>http_post</code>, <code>http_put</code>, <code>http_patch</code>, and <code>http_delete</code> plugins take only a relative path and optional query dictionary. Their private settings fix the base URL, allowed path prefixes, timeout, maximum response size, and TLS policy. Full URLs, traversal, fragments, embedded query strings, and non-allowlisted paths are rejected.</p><p>POST, PUT, and PATCH require a validated JSON-object string; DELETE accepts one optionally. JSON is sent as unchanged UTF-8. All four mutating tools require approval for every request. HTTP status codes and response bodies are returned to the agent.</p><p>Add private headers with settings such as <code>header.Authorization = Bearer ...</code> or <code>header.X-API-Key = ...</code>. These values are not model-visible. Malformed headers and attempts to override transport-controlled headers are rejected. Protect configuration files that contain credentials.</p><p>For private certificates, use <code>tls_verify = true</code> with <code>tls_ca_file</code> pointing to a trusted PEM certificate. A development-only <code>tls_verify = false</code> mode accepts self-signed certificates without authenticating the server; never use it on public or untrusted networks.</p><p>GET is treated as read-only and does not require approval. Configure only endpoints where GET does not mutate state.</p></section>
-        <section id="fossil">
+}</code></pre>
+			</div>
+			
+			<h3>Understanding the Handler Arguments</h3>
+			<p>Your procedure receives three explicit parameters directly from the runtime engine:</p>
+			<dl>
+				<dt><code>workspaceRoot</code></dt>
+				<dd>The absolute path to the configured project root. Use this to safely scope all local file system operations.</dd>
+				<dt><code>arguments</code></dt>
+				<dd>A Tcl dictionary containing the pre-validated arguments sent by the model. These are guaranteed to match your manifest's JSON schema.</dd>
+				<dt><code>settings</code></dt>
+				<dd>A dictionary containing trusted values from the optional <code>[settings]</code> section of your INI file. These values are stripped out before the tool schema is shown to the model.</dd>
+			</dl>
+			<h3>Best Practices for Execution</h3>
+			<ul>
+				<li><strong>Keep it concise:</strong> Return precise, structured text data. The more noise or unnecessary text you include, the more model context window tokens you consume.</li>
+				<li><strong>Protect secrets:</strong> <code>settings</code> data is never logged automatically or seen by the model. Make sure your script logic never accidentally returns raw API keys or passwords back to the execution result stream.</li>
+			</ul>
+		</section>
+        
+		<section id="safety">
+			<h2>Safety boundary</h2>
+			<ul>
+				<li>Filesystem paths remain inside the configured workspace.</li>
+				<li>Reference tools such as <code>oodz_read</code> use separate named read-only roots.</li>
+				<li>Write plugins require confirmation for each call.</li>
+				<li>Child interpreters enforce execution deadlines and result limits.</li>
+				<li>Manifest paths and workspace paths reject escapes.</li>
+				<li>Installed Tcl plugins are trusted local code and must be reviewed before installation.</li>
+			</ul>
+		</section>
+        
+		
+		<section id="http"><h2>Scoped HTTP tools</h2><p>The built-in <code>http_get</code>, <code>http_post</code>, <code>http_put</code>, <code>http_patch</code>, and <code>http_delete</code> plugins take only a relative path and optional query dictionary. Their private settings fix the base URL, allowed path prefixes, timeout, maximum response size, and TLS policy. Full URLs, traversal, fragments, embedded query strings, and non-allowlisted paths are rejected.</p><p>POST, PUT, and PATCH require a validated JSON-object string; DELETE accepts one optionally. JSON is sent as unchanged UTF-8. All four mutating tools require approval for every request. HTTP status codes and response bodies are returned to the agent.</p><p>Add private headers with settings such as <code>header.Authorization = Bearer ...</code> or <code>header.X-API-Key = ...</code>. These values are not model-visible. Malformed headers and attempts to override transport-controlled headers are rejected. Protect configuration files that contain credentials.</p><p>For private certificates, use <code>tls_verify = true</code> with <code>tls_ca_file</code> pointing to a trusted PEM certificate. A development-only <code>tls_verify = false</code> mode accepts self-signed certificates without authenticating the server; never use it on public or untrusted networks.</p><p>GET is treated as read-only and does not require approval. Configure only endpoints where GET does not mutate state.</p></section>
+        
+		<section id="fossil">
           <h2>Fossil tools</h2>
           <h3>Inspect the checkout</h3>
           <p><code>fossil_status</code> shows checkout metadata and local changes. <code>fossil_changes</code> gives a concise classified list of managed changes that would enter the next commit. <code>fossil_extras</code> lists unmanaged files using workspace-relative paths and the checkout's ignore policy. <code>fossil_ls</code> lists every managed file with its current status.</p>
@@ -73,6 +132,29 @@ proc ::plugins::my_tool::execute {workspaceRoot arguments settings} {
           <h3>Execution boundary</h3>
           <p>Every Fossil plugin uses the configured workspace and controlled process runner, inheriting its timeout, output limit, and execution backend. Local operations perform no implicit network synchronization. <code>fossil_pull</code> and <code>fossil_push</code> are explicit approval-gated network operations that use only the checkout's configured default remote and accept no URL or credentials from the model. Pull changes only the local repository and does not update working files; push sends public sharable changes and excludes private branches.</p>
         </section>
+		
+		<section id="built-in">
+			<h2>Built-in tools</h2>
+			<div class="row g-3">
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>read_file</code></h3><p>Read one UTF-8 workspace file.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>list_files</code></h3><p>List files at a workspace-relative path.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>search_files</code></h3><p>Recursive, case-insensitive literal text search.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>file_info</code></h3><p>Inspect path type, size, modification time, and permissions.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>xml_validate</code></h3><p>Validate UTF-8 XML and report its root element using tDOM.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>oodz_lookup</code></h3><p>Search a compact, source-linked index of OODZ framework capabilities.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>oodz_read</code></h3><p>Read up to 200 numbered UTF-8 lines from the configured OODZ source root.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>oodz_search</code></h3><p>Recursively search OODZ source with bounded path, line, and preview results.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>save_translation</code></h3><p>Validate and POST six translations to the fixed SaaS endpoint, with dry-run support.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>make_directory</code></h3><p>Create directories and missing parents after explicit approval.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>edit_file</code></h3><p>Replace one unique exact text fragment after explicit approval.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>apply_patch</code></h3><p>Atomically apply exact SEARCH/REPLACE blocks.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>copy_file</code></h3><p>Copy a file without overwriting an existing destination.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>move_file</code></h3><p>Move or rename a file without overwriting.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>delete_file</code></h3><p>Delete one file; directory deletion is refused.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission write">write</span><h3 class="mt-3"><code>write_file</code></h3><p>Write UTF-8 content after explicit user approval.</p></div></div></div>
+			</div>
+		</section>
+		
       </article>
     </div>
   </main>

@@ -7,10 +7,8 @@ proc ::plugins::copy_file::execute {workspaceRoot arguments settings} {
         error "Source and destination paths must not be empty"
     }
 
-    set source [::PluginSupport::resolveWorkspacePath \
-        $workspaceRoot $sourceRelative]
-    set destination [::PluginSupport::resolveWorkspacePath \
-        $workspaceRoot $destinationRelative]
+    set source [::PluginSupport::resolveWorkspacePath $workspaceRoot $sourceRelative]
+    set destination [::PluginSupport::resolveWorkspacePath $workspaceRoot $destinationRelative]
     if {![file isfile $source]} {
         error "Source file does not exist: $sourceRelative"
     }

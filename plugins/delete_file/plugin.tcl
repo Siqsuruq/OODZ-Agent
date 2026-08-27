@@ -6,8 +6,7 @@ proc ::plugins::delete_file::execute {workspaceRoot arguments settings} {
         error "File path must not be empty"
     }
 
-    set path [::PluginSupport::resolveWorkspacePath \
-        $workspaceRoot $relativePath]
+    set path [::PluginSupport::resolveWorkspacePath $workspaceRoot $relativePath]
     if {![file exists $path]} {
         error "File does not exist: $relativePath"
     }

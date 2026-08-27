@@ -14,8 +14,7 @@ proc ::plugins::edit_file::execute {workspaceRoot arguments settings} {
         error "Replacement would not change the file"
     }
 
-    set path [::PluginSupport::resolveWorkspacePath \
-        $workspaceRoot $relativePath]
+    set path [::PluginSupport::resolveWorkspacePath $workspaceRoot $relativePath]
     if {![file isfile $path]} {
         error "File does not exist: $relativePath"
     }
@@ -32,17 +31,14 @@ proc ::plugins::edit_file::execute {workspaceRoot arguments settings} {
     if {$first < 0} {
         error "old_text was not found in: $relativePath"
     }
-    set second [string first $oldText $content \
-        [expr {$first + [string length $oldText]}]]
+    set second [string first $oldText $content [expr {$first + [string length $oldText]}]]
     if {$second >= 0} {
         error "old_text appears more than once in: $relativePath"
     }
 
-    set updated [string replace $content $first \
-        [expr {$first + [string length $oldText] - 1}] $newText]
+    set updated [string replace $content $first [expr {$first + [string length $oldText] - 1}] $newText]
     set parent [file dirname $path]
-    set temporaryChannel [file tempfile temporaryPath \
-        [file join $parent .oodz-edit-XXXXXX]]
+    set temporaryChannel [file tempfile temporaryPath [file join $parent .oodz-edit-XXXXXX]]
     try {
         fconfigure $temporaryChannel -encoding utf-8 -translation lf
         puts -nonewline $temporaryChannel $updated
