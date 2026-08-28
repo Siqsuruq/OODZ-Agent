@@ -2,6 +2,38 @@
 
 source [file join [file dirname [file normalize [info script]]] support.tcl]
 
+test list-folders-1.1 {list_folders returns directories and omits files} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] list-folders-[pid]-[clock clicks]]]
+    file mkdir [file join $root alpha] [file join $root .hidden] \
+        [file join $root nested child]
+    set channel [open [file join $root visible.txt] w]
+    close $channel
+    set registry [tPluginRegistry new $root \
+        [list [file join $projectDir plugins]]]
+    try {
+        set rootResult [$registry invoke list_folders \
+            [::json::write object]]
+        set nestedResult [$registry invoke list_folders \
+            [::json::write object path \
+                [::json::write string nested]]]
+        set missingCode [catch {$registry invoke list_folders \
+            [::json::write object path \
+                [::json::write string missing]]} missingMessage]
+        set escapeCode [catch {$registry invoke list_folders \
+            [::json::write object path \
+                [::json::write string ../outside]]} escapeMessage]
+        list $rootResult $nestedResult \
+            $missingCode $missingMessage $escapeCode $escapeMessage
+    } finally {
+        $registry destroy
+        file delete -force $root
+    }
+} -result [list \
+    ".hidden/\nalpha/\nnested/" "child/" \
+    1 "Directory does not exist: missing" \
+    1 "Plugin path escapes the workspace"]
+
 test write-file-1.1 {write_file requires approval and writes exact content} -body {
     set temporaryRoot [file join [temporaryDirectory] \
         "oodz-write-test-[pid]-[clock clicks]"]

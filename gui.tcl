@@ -552,7 +552,7 @@ proc ::oodzGui::start {} {
         error "Plugins.lazy_loading must be boolean"
     }
     set pluginCore [::parsePluginNames [$config get Plugins.core \
-        "read_file,list_files,search_files,file_info,apply_patch,write_file"]]
+        "read_file,list_files,search_files,file_info,system_info,apply_patch,write_file"]]
     set pluginDirectories [::resolvePluginDirectories $scriptDir \
         [$config get Plugins.directories ""]]
     set workerEnabled [$config get Plugins.worker_thread true]

@@ -74,7 +74,7 @@ root = .
 
 [Plugins]
 lazy_loading = true
-core = read_file,list_files,search_files,file_info,apply_patch,write_file
+core = read_file,list_files,search_files,file_info,system_info,apply_patch,write_file
 worker_thread = true
 timeout_ms = 1000
 max_output_chars = 65536
@@ -755,7 +755,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 123 Passed 123 Skipped 0 Failed 0
+all.tcl: Total 125 Passed 125 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the
@@ -767,7 +767,7 @@ The supported path is:
 
 ```text
 CLI -> tAgent -> DeepSeek
-               -> plugin registry -> read_file/list_files/search_files/file_info/xml_validate
+               -> plugin registry -> read_file/list_files/list_folders/search_files/file_info/system_info/xml_validate
                                      oodz_lookup/oodz_search/oodz_read
                                      save_translation
                                      make_directory/edit_file/apply_patch

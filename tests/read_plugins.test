@@ -2,6 +2,25 @@
 
 source [file join [file dirname [file normalize [info script]]] support.tcl]
 
+test system-info-1.1 {system_info reports stable runtime facts without arguments} -body {
+    set registry [tPluginRegistry new $projectDir \
+        [list [file join $projectDir plugins]]]
+    try {
+        set result [$registry invoke system_info [::json::write object]]
+        list \
+            [expr {[string first "Operating system: $::tcl_platform(os)" \
+                $result] >= 0}] \
+            [expr {[string first "Tcl version: [info patchlevel]" \
+                $result] >= 0}] \
+            [expr {[string first "Thread package: " $result] >= 0}] \
+            [expr {[string first "Workspace: [file normalize $projectDir]" \
+                $result] >= 0}] \
+            [expr {[string first "Tcl executable: " $result] >= 0}]
+    } finally {
+        $registry destroy
+    }
+} -result {1 1 1 1 1}
+
 test skills-tool-1.1 {load_skill exposes one selected workflow on demand} -body {
     set skills [::tSkillRegistry new [list [file join $projectDir skills]]]
     set registry [::tPluginRegistry new \
