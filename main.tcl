@@ -73,6 +73,19 @@ proc ::buildAgentSystemRole {
     return $systemRole
 }
 
+proc ::addModelIdentityToSystemRole {systemRole clientObject} {
+    if {"modelInfo" ni [info object methods $clientObject -all]} {
+        return $systemRole
+    }
+    set information [$clientObject modelInfo]
+    append systemRole \
+        "\n\nRuntime model identity:" \
+        "\n- Provider: [dict get $information provider]" \
+        "\n- Configured model: [dict get $information configured_model]" \
+        "\nTreat the configured model as runtime metadata; do not guess a different identity. The model_info tool can report the API-returned identifier after a response."
+    return $systemRole
+}
+
 proc ::parsePluginNames {configuredNames} {
     set names {}
     foreach configuredName [split $configuredNames ,] {
@@ -611,8 +624,13 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
                 [$config get Plugins.max_output_chars 65536] \
                 $referenceRoots $runnerConfig]
         }
-        set pluginRegistry [tPluginRegistry new $workspaceRoot $pluginDirectories [list ::requestPluginApproval $inChannel $errChannel] [$config get Plugins.timeout_ms 1000] [$config get Plugins.max_output_chars 65536] $referenceRoots $skillRegistry $instructionRegistry $processRunner $pluginLazyLoading $pluginCore "" $pluginWorker]
+        set modelInfoCallback ""
+        if {"modelInfo" in [info object methods $aiEngine -all]} {
+            set modelInfoCallback [list $aiEngine modelInfo]
+        }
+        set pluginRegistry [tPluginRegistry new $workspaceRoot $pluginDirectories [list ::requestPluginApproval $inChannel $errChannel] [$config get Plugins.timeout_ms 1000] [$config get Plugins.max_output_chars 65536] $referenceRoots $skillRegistry $instructionRegistry $processRunner $pluginLazyLoading $pluginCore "" $pluginWorker $modelInfoCallback]
         set systemRole [::buildAgentSystemRole $config $workspaceInstructions [$skillRegistry summaries] [$instructionRegistry enabled] $runnerEnabled $pluginLazyLoading]
+        set systemRole [::addModelIdentityToSystemRole $systemRole $aiEngine]
         set codingAgent [tAgent new [$config get Agent.name] $systemRole $aiEngine $pluginRegistry [$config get Agent.max_iterations 16] [expr {$interactive ? [list ::printStreamChunk $outChannel] : ""}] [$config get Agent.max_history_messages 40] [$config get Agent.summarize_history false]]
 
         if {$interactive} {

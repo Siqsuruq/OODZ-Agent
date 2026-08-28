@@ -116,6 +116,7 @@ namespace eval ::PluginSupport {
     variable lazyLoading corePlugins activePlugins
     variable currentPlatform unavailablePlugins
     variable pluginWorker
+    variable modelInfoCallback
 
     constructor {
         configuredWorkspaceRoot pluginDirectories
@@ -129,7 +130,7 @@ namespace eval ::PluginSupport {
         {configuredLazyLoading false}
         {configuredCorePlugins {}}
         {configuredPlatform ""}
-        {configuredPluginWorker ""}
+        {configuredPluginWorker ""} {configuredModelInfoCallback ""}
     } {
         set workspaceRoot [file normalize $configuredWorkspaceRoot]
         if {![file isdirectory $workspaceRoot]} {
@@ -176,6 +177,7 @@ namespace eval ::PluginSupport {
         }
         set unavailablePlugins [dict create]
         set pluginWorker $configuredPluginWorker
+        set modelInfoCallback $configuredModelInfoCallback
         if {$pluginWorker ne ""
                 && ![info object isa typeof $pluginWorker tPluginWorker]} {
             error "Invalid plugin worker"
@@ -387,6 +389,9 @@ namespace eval ::PluginSupport {
 
     method names {} {
         set names [dict keys $plugins]
+        if {$modelInfoCallback ne ""} {
+            lappend names model_info
+        }
         if {$skillRegistry ne ""} {
             lappend names load_skill
         }
@@ -424,6 +429,15 @@ namespace eval ::PluginSupport {
                 lappend definitions [dict create \
                     name search_plugins \
                     description "Search the installed plugin index and activate matching tools for the next response." \
+                    parameters [::json::json2dict $parametersJson] \
+                    parameters_json $parametersJson]
+                continue
+            }
+            if {$name eq "model_info"} {
+                set parametersJson {{"type":"object","properties":{},"required":[],"additionalProperties":false}}
+                lappend definitions [dict create \
+                    name model_info \
+                    description "Report the configured LLM provider and model plus the model identifier most recently returned by the API. No credentials or endpoint details are exposed." \
                     parameters [::json::json2dict $parametersJson] \
                     parameters_json $parametersJson]
                 continue
@@ -477,6 +491,18 @@ namespace eval ::PluginSupport {
     }
 
     method invoke {name argumentsJson} {
+        if {$name eq "model_info" && $modelInfoCallback ne ""} {
+            if {[catch {::json::json2dict $argumentsJson} arguments]} {
+                error "Invalid JSON arguments for plugin: $name"
+            }
+            my validateArguments $name $arguments \
+                [dict create properties [dict create] required {}]
+            set information [{*}$modelInfoCallback]
+            return [join [list \
+                "Provider: [dict get $information provider]" \
+                "Configured model: [dict get $information configured_model]" \
+                "API-reported model: [dict get $information reported_model]"] "\n"]
+        }
         if {$name eq "search_plugins" && $lazyLoading} {
             if {[catch {::json::json2dict $argumentsJson} arguments]} {
                 error "Invalid JSON arguments for plugin: $name"
@@ -621,6 +647,9 @@ namespace eval ::PluginSupport {
 
     method specialNames {} {
         set result {}
+        if {$modelInfoCallback ne ""} {
+            lappend result model_info
+        }
         if {$skillRegistry ne ""} {
             lappend result load_skill
         }

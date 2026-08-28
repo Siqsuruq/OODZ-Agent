@@ -69,6 +69,7 @@ package require json::write
     variable log provider apiKey modelUrl modelName timeout
     variable maxRetries retryDelay transport ownsTransport
     variable streamingMessage streamingToolCalls thinkingEnabled
+    variable reportedModel
 
     constructor {configObj {transportObj ""}} {
         set log [::tLogger getLogger [self class]]
@@ -107,6 +108,7 @@ package require json::write
             error "LLM.thinking must be boolean"
         }
         set thinkingEnabled [expr {$configuredThinking ? 1 : 0}]
+        set reportedModel ""
 
         if {$transportObj eq ""} {
             set transport [::tHttpTransport new]
@@ -246,7 +248,12 @@ package require json::write
     }
 
     method consumeStreamEvent {contentCallback data} {
-        if {[catch {::json::json2dict $data} event] || ![dict exists $event choices] || [llength [dict get $event choices]] == 0} {
+        if {[catch {::json::json2dict $data} event]} {
+            return
+        }
+        my recordReportedModel $event
+        if {![dict exists $event choices]
+                || [llength [dict get $event choices]] == 0} {
             return
         }
         set choice [lindex [dict get $event choices] 0]
@@ -346,6 +353,23 @@ package require json::write
         switch -- $provider {
             deepseek {return "DeepSeek"}
             ollama {return "Ollama"}
+        }
+    }
+
+    method modelInfo {} {
+        return [dict create \
+            provider $provider \
+            configured_model $modelName \
+            reported_model [expr {$reportedModel eq "" \
+                ? "(not reported yet)" : $reportedModel}]]
+    }
+
+    method recordReportedModel {response} {
+        if {[dict exists $response model]} {
+            set candidate [string trim [dict get $response model]]
+            if {$candidate ne "" && $candidate ne "null"} {
+                set reportedModel $candidate
+            }
         }
     }
 
@@ -450,6 +474,7 @@ package require json::write
         if {[catch {::json::json2dict $body} response]} {
             return -code error "Parsing Error: invalid JSON response"
         }
+        my recordReportedModel $response
 
         if {![dict exists $response choices] || [llength [dict get $response choices]] == 0 || ![dict exists [lindex [dict get $response choices] 0] message]} {
             return -code error "Parsing Error: response has no assistant message"

@@ -245,12 +245,61 @@ test client-json-1.4 {DeepSeek payload includes plugin tool definitions} -body {
         $registry destroy
         $config destroy
     }
-} -result [list 51 false disabled function read_file object [list path]]
+} -result [list 52 false disabled function read_file object [list path]]
+
+test client-model-info-1.1 {model identity distinguishes configured and reported models} -body {
+    set config [::FakeConfig new [dict create \
+        LLM.provider ollama \
+        LLM.model configured-model \
+        LLM.url http://127.0.0.1:11434/v1/chat/completions]]
+    set client [::tLLMClient new $config]
+    try {
+        set before [$client modelInfo]
+        $client parseResponseMessage [::json::write object \
+            model [::json::write string served-model-q4] \
+            choices [::json::write array [::json::write object \
+                message [::json::write object \
+                    role [::json::write string assistant] \
+                    content [::json::write string ok]]]]]
+        set after [$client modelInfo]
+        set registry [tPluginRegistry new $projectDir \
+            [list [file join $projectDir plugins]] \
+            "" 1000 65536 {} "" "" "" false {} "" "" \
+            [list $client modelInfo]]
+        try {
+            set toolResult [$registry invoke model_info \
+                [::json::write object]]
+            set toolNames [lmap definition [$registry definitions] {
+                dict get $definition name
+            }]
+            set role [::addModelIdentityToSystemRole base $client]
+            list \
+                [dict get $before provider] \
+                [dict get $before configured_model] \
+                [dict get $before reported_model] \
+                [dict get $after reported_model] \
+                [expr {"model_info" in $toolNames}] \
+                [expr {[string first "Provider: ollama" $toolResult] >= 0}] \
+                [expr {[string first "API-reported model: served-model-q4" \
+                    $toolResult] >= 0}] \
+                [expr {[string first "Configured model: configured-model" \
+                    $role] >= 0}]
+        } finally {
+            $registry destroy
+        }
+    } finally {
+        $client destroy
+        $config destroy
+    }
+} -result [list \
+    ollama configured-model "(not reported yet)" served-model-q4 1 1 1 1]
 
 test client-stream-1.1 {streaming assembles content and tool-call deltas} -body {
     set config [::FakeConfig new [dict create LLM.api_key "test-only-key"]]
     set events [list \
-        [::json::write object choices [::json::write array \
+        [::json::write object \
+            model [::json::write string streaming-model] \
+            choices [::json::write array \
             [::json::write object delta [::json::write object \
                 reasoning_content [::json::write string "Need a file. "]]]]] \
         [::json::write object choices [::json::write array \
@@ -298,7 +347,8 @@ test client-stream-1.1 {streaming assembles content and tool-call deltas} -body 
             [dict get $call id] \
             [dict get $call type] \
             [dict get $call function name] \
-            [::json::json2dict [dict get $call function arguments]]
+            [::json::json2dict [dict get $call function arguments]] \
+            [dict get [$client modelInfo] reported_model]
     } finally {
         $client destroy
         $transport destroy
@@ -312,7 +362,8 @@ test client-stream-1.1 {streaming assembles content and tool-call deltas} -body 
     "call_1" \
     "function" \
     "read_file" \
-    [dict create path main.tcl]]
+    [dict create path main.tcl] \
+    streaming-model]
 
 test client-stream-1.2 {empty stream falls back to a visible buffered response} -body {
     set config [::FakeConfig new [dict create \

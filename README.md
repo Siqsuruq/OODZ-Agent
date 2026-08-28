@@ -165,6 +165,11 @@ Configuration fields:
 - `Runner.project_tests_arguments`: Trusted Tcl-list arguments passed directly
   without shell evaluation.
 - `Runner.project_tests_timeout_ms`: Separate timeout for the complete suite.
+- `model_info`: Special core tool reporting the configured provider/model and
+  the model identifier most recently returned by the API. Before the first
+  response, the reported value is `(not reported yet)`. It never exposes API
+  keys, endpoint URLs, headers, or credentials. The configured identity is
+  also included in the model's system prompt.
 - `GUI.theme_package`: Optional Tcl package to load from `lib/` or one of its
   immediate package directories before selecting the theme.
 - `GUI.theme`: Optional installed Ttk theme name. Leave it empty to use the
@@ -755,7 +760,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 125 Passed 125 Skipped 0 Failed 0
+all.tcl: Total 128 Passed 128 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the
@@ -773,6 +778,7 @@ CLI -> tAgent -> DeepSeek
                                      make_directory/edit_file/apply_patch
                                      copy_file/move_file/delete_file/write_file
                                      zip/unzip
+                                     random_string
 ```
 
 Conversation and tool-call history is saved after each successful interactive

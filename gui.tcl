@@ -580,12 +580,20 @@ proc ::oodzGui::start {} {
             [$config get Plugins.max_output_chars 65536] \
             $referenceRoots $runnerConfig]
     }
+    set modelInfoCallback ""
+    if {"modelInfo" in [info object methods $client -all]} {
+        set modelInfoCallback [list $client modelInfo]
+    }
     set registry [tPluginRegistry new $workspaceRoot $pluginDirectories \
         ::oodzGui::approve [$config get Plugins.timeout_ms 1000] \
         [$config get Plugins.max_output_chars 65536] $referenceRoots \
         $skillRegistry $instructionRegistry $processRunner \
-        $pluginLazyLoading $pluginCore "" $pluginWorker]
-    set agent [tAgent new [$config get Agent.name] [::buildAgentSystemRole $config $instructions [$skillRegistry summaries] [$instructionRegistry enabled] $runnerEnabled $pluginLazyLoading] \
+        $pluginLazyLoading $pluginCore "" $pluginWorker $modelInfoCallback]
+    set systemRole [::buildAgentSystemRole $config $instructions \
+        [$skillRegistry summaries] [$instructionRegistry enabled] \
+        $runnerEnabled $pluginLazyLoading]
+    set systemRole [::addModelIdentityToSystemRole $systemRole $client]
+    set agent [tAgent new [$config get Agent.name] $systemRole \
         $client $registry [$config get Agent.max_iterations 16] ::oodzGui::streamChunk [$config get Agent.max_history_messages 40] [$config get Agent.summarize_history false]]
     set historyPath [$config get Agent.history_file .oodz/history.json]
     if {[file pathtype $historyPath] ne "absolute"} {

@@ -20,6 +20,7 @@
         <section id="components"><h2>Components</h2><div class="table-responsive"><table class="table"><thead><tr><th>File</th><th>Responsibility</th></tr></thead><tbody>
           <tr><td><code>main.tcl</code></td><td>Configuration, object wiring, interactive commands, presentation, and process exit codes.</td></tr>
           <tr><td><code>agentClass.tcl</code></td><td>Conversation memory and the bounded model/tool execution loop.</td></tr>
+          <tr><td><code>clientClass.tcl</code></td><td>Provider transport, configured model identity, and capture of API-reported model identifiers from buffered or streaming responses.</td></tr>
           <tr><td><code>clientClass.tcl</code></td><td>DeepSeek and Ollama payloads, HTTP/TLS, SSE streaming, parsing, fallback, and retry behavior.</td></tr>
           <tr><td><code>pluginRegistry.tcl</code></td><td>Plugin discovery, metadata, lazy exposure, validation, approval, and invocation routing.</td></tr>
           <tr><td><code>pluginWorker.tcl</code></td><td>Persistent Tcl worker thread, asynchronous result protocol, and event-loop-friendly compatibility calls.</td></tr>

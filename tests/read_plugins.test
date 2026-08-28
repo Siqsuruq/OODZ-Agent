@@ -21,6 +21,48 @@ test system-info-1.1 {system_info reports stable runtime facts without arguments
     }
 } -result {1 1 1 1 1}
 
+test random-string-1.1 {random_string honors length and alphabet presets} -body {
+    set registry [tPluginRegistry new $projectDir \
+        [list [file join $projectDir plugins]]]
+    try {
+        set defaultValue [$registry invoke random_string \
+            [::json::write object]]
+        set hexValue [$registry invoke random_string \
+            [::json::write object \
+                length 40 \
+                alphabet [::json::write string hex]]]
+        set uppercaseValue [$registry invoke random_string \
+            [::json::write object \
+                length 24 \
+                alphabet [::json::write string uppercase]]]
+        list \
+            [string length $defaultValue] \
+            [regexp {^[A-Za-z0-9]+$} $defaultValue] \
+            [string length $hexValue] \
+            [regexp {^[0-9a-f]+$} $hexValue] \
+            [string length $uppercaseValue] \
+            [regexp {^[A-Z]+$} $uppercaseValue]
+    } finally {
+        $registry destroy
+    }
+} -result {16 1 40 1 24 1}
+
+test random-string-1.2 {random_string rejects invalid and excessive lengths} -body {
+    set registry [tPluginRegistry new $projectDir \
+        [list [file join $projectDir plugins]]]
+    try {
+        set zeroCode [catch {$registry invoke random_string \
+            [::json::write object length 0]} zeroMessage]
+        set largeCode [catch {$registry invoke random_string \
+            [::json::write object length 4097]} largeMessage]
+        list $zeroCode $zeroMessage $largeCode $largeMessage
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    1 "random_string length must be a positive integer" \
+    1 "random_string length exceeds configured limit: 4096"]
+
 test skills-tool-1.1 {load_skill exposes one selected workflow on demand} -body {
     set skills [::tSkillRegistry new [list [file join $projectDir skills]]]
     set registry [::tPluginRegistry new \
