@@ -32,32 +32,23 @@ proc ::buildAgentSystemRole {
 } {
     set systemRole [$config get Agent.role]
     if {$workspaceInstructions ne ""} {
-        append systemRole \
-            "\n\nProject workspace instructions:\n" \
-            $workspaceInstructions
+        append systemRole "\n\nProject workspace instructions:\n" $workspaceInstructions
     }
     append systemRole \
         "\nCall at most one tool in each response." \
         " Never request multiple tools in parallel." \
         " For coding tasks, make at most three read-only inspection" \
-        " calls before you either implement, provide the answer, or ask" \
-        " one concise clarification question." \
-        " Do not keep searching for examples after you have enough" \
-        " information to follow the framework conventions." \
-        " Project workspace instructions are already present in this" \
-        " system message; do not read their file again with a tool." \
-        " If an essential detail such as the destination filename is" \
-        " missing, ask the user instead of performing more research."
+        " calls before you either implement, provide the answer, or ask one concise clarification question." \
+        " Do not keep searching for examples after you have enough information to follow the framework conventions." \
+        " Project workspace instructions are already present in this system message; do not read their file again with a tool." \
+        " If an essential detail such as the destination filename is missing, ask the user instead of performing more research."
     if {[llength $skillSummaries] > 0} {
         append systemRole "\n\nAvailable skills (name - trigger description):"
         foreach summary $skillSummaries {
-            append systemRole \
-                "\n- [dict get $summary name] - " \
-                [dict get $summary description]
+            append systemRole "\n- [dict get $summary name] - " [dict get $summary description]
         }
         append systemRole \
-            "\nWhen a skill clearly matches the task, call load_skill once" \
-            " before following that workflow. Do not load unrelated skills."
+            "\nWhen a skill clearly matches the task, call load_skill once before following that workflow. Do not load unrelated skills."
     }
     if {$hierarchicalInstructions} {
         append systemRole \
@@ -70,16 +61,14 @@ proc ::buildAgentSystemRole {
     }
     if {$runnerEnabled} {
         append systemRole \
-            "\nAfter creating or modifying a standalone Tcl file, use" \
-            " run_tcl_file when execution is appropriate. Never claim code" \
-            " was tested unless the runner succeeds."
+            "\nAfter creating or modifying a standalone Tcl file, use run_tcl_file when execution is appropriate." \
+            " Never claim code was tested unless the runner succeeds."
     }
     if {$pluginLazyLoading} {
         append systemRole \
-            "\nOnly core and previously activated plugins are initially" \
-            " available. When the task needs another capability, call" \
-            " search_plugins with concise capability words. Matching" \
-            " plugins are activated for your next response."
+            "\nOnly core and previously activated plugins are initially available." \
+            " When the task needs another capability, call search_plugins with concise capability words." \
+            " Matching plugins are activated for your next response."
     }
     return $systemRole
 }
@@ -257,7 +246,7 @@ proc ::styleTerminalText {channel text style} {
 proc ::configureStandardChannels {} {
 	puts "Configuring channels"
 	if {$::tcl_platform(platform) eq "windows"} {
-		puts "we are here"
+		#puts "we are here"
 		# Set console to UTF-8
 		catch {exec chcp.com 65001 > nul}
 		# BUT don't change stdout encoding - let Tcl use its Windows Unicode handler
@@ -266,7 +255,7 @@ proc ::configureStandardChannels {} {
 	} else {
 		# On Unix/Linux/macOS, UTF-8 everywhere is fine
 		foreach channel {stdin stdout stderr} {
-			puts "channel : $channel"
+			#puts "channel : $channel"
 			catch {fconfigure $channel -encoding utf-8}
 		}
 	}

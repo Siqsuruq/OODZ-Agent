@@ -1,0 +1,130 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+source [file join $projectDir plugins unzip plugin.tcl]
+
+test archive-plugins-1.1 {zip and unzip round trip through Tcl 9 zipfs} -body {
+    set root [file normalize [file join [temporaryDirectory] archive-plugins-[pid]-[clock clicks]]]
+    file mkdir [file join $root source nested]
+    set channel [open [file join $root source hello.txt] w]
+    puts -nonewline $channel "hello archive"
+    close $channel
+    set channel [open [file join $root source nested data.txt] w]
+    puts -nonewline $channel "nested data"
+    close $channel
+    set channel [open [file join $root source .hidden] w]
+    puts -nonewline $channel "hidden data"
+    close $channel
+
+    set registry [tPluginRegistry new $root [list [file join $projectDir plugins]] ::ApprovalMock::decide]
+
+    set zipArguments [::json::write object source [::json::write string source] destination [::json::write string bundle.zip]]
+    set unzipArguments [::json::write object source [::json::write string bundle.zip] destination [::json::write string extracted]]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {$registry invoke zip $zipArguments} denied]
+        set ::ApprovalMock::approved 1
+        set zipped [$registry invoke zip $zipArguments]
+        set unzipped [$registry invoke unzip $unzipArguments]
+        set channel [open [file join $root extracted nested data.txt] r]
+        set content [read $channel]
+        close $channel
+        set hiddenExists [file isfile [file join $root extracted .hidden]]
+        list $deniedCode $denied [file exists [file join $root bundle.zip]] $zipped $unzipped $content $hiddenExists
+    } finally {
+        $registry destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: zip" 1 \
+    "Created ZIP archive: source -> bundle.zip" \
+    "Extracted ZIP archive: bundle.zip -> extracted" \
+    "nested data" 1]
+
+test archive-plugins-1.2 {archive plugins reject overwrite and escaping paths} -body {
+    set root [file normalize [file join [temporaryDirectory] archive-validation-[pid]-[clock clicks]]]
+    file mkdir [file join $root source] [file join $root occupied]
+    set registry [tPluginRegistry new $root [list [file join $projectDir plugins]] ::ApprovalMock::decide]
+    set ::ApprovalMock::approved 1
+    try {
+        set extensionCode [catch {$registry invoke zip [::json::write object source [::json::write string source] destination [::json::write string bundle.dat]]} extension]
+        set escapeCode [catch {$registry invoke unzip [::json::write object source [::json::write string ../bundle.zip] destination [::json::write string output]]} escape]
+        set occupiedCode [catch {$registry invoke unzip [::json::write object source [::json::write string missing.zip] destination [::json::write string occupied]]} occupied]
+        list $extensionCode $extension $escapeCode $escape $occupiedCode $occupied
+    } finally {
+        $registry destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "ZIP destination must use the .zip extension" \
+    1 "Plugin path escapes the workspace" \
+    1 "ZIP archive does not exist: missing.zip"]
+
+test archive-plugins-1.3 {unzip enforces entry limit and cleans partial output} -body {
+    set root [file normalize [file join [temporaryDirectory] archive-entry-limit-[pid]-[clock clicks]]]
+    set source [file join $root source]
+    file mkdir $source
+    foreach name {one.txt two.txt three.txt} {
+        set channel [open [file join $source $name] w]
+        puts -nonewline $channel $name
+        close $channel
+    }
+    zipfs mkzip [file join $root bundle.zip] $source $source
+    try {
+        set code [catch {
+            ::plugins::unzip::execute $root [dict create source bundle.zip destination rejected] [dict create max_entries 2 max_uncompressed_bytes 1000]
+        } message]
+        set cleaned [expr {![file exists [file join $root rejected]]}]
+        set recovered [::plugins::unzip::execute $root [dict create source bundle.zip destination extracted] [dict create max_entries 10 \
+                max_uncompressed_bytes 1000]]
+        list $code $message $cleaned $recovered [file isfile [file join $root extracted three.txt]]
+    } finally {
+        file delete -force $root
+    }
+} -result [list \
+    1 "ZIP archive exceeds entry limit: 2" 1 \
+    "Extracted ZIP archive: bundle.zip -> extracted" 1]
+
+test archive-plugins-1.4 {unzip enforces uncompressed byte limit and cleans output} -body {
+    set root [file normalize [file join [temporaryDirectory] archive-byte-limit-[pid]-[clock clicks]]]
+    set source [file join $root source]
+    file mkdir $source
+    set channel [open [file join $source large.txt] w]
+    puts -nonewline $channel [string repeat x 64]
+    close $channel
+    zipfs mkzip [file join $root bundle.zip] $source $source
+    try {
+        set code [catch {
+            ::plugins::unzip::execute $root [dict create source bundle.zip destination rejected] [dict create max_entries 10 max_uncompressed_bytes 32]
+        } message]
+        list $code $message [file exists [file join $root rejected]]
+    } finally {
+        file delete -force $root
+    }
+} -result [list \
+    1 "ZIP archive exceeds uncompressed size limit: 32 bytes" 0]
+
+test archive-plugins-1.5 {unzip rejects invalid limit settings} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] archive-settings-[pid]-[clock clicks]]]
+    set source [file join $root source]
+    file mkdir $source
+    set channel [open [file join $source file.txt] w]
+    close $channel
+    zipfs mkzip [file join $root bundle.zip] $source $source
+    try {
+        set entriesCode [catch {
+            ::plugins::unzip::execute $root [dict create source bundle.zip destination entries] [dict create max_entries zero]
+        } entriesMessage]
+        set bytesCode [catch {
+            ::plugins::unzip::execute $root [dict create source bundle.zip destination bytes] [dict create max_entries 10 max_uncompressed_bytes 0]
+        } bytesMessage]
+        list $entriesCode $entriesMessage $bytesCode $bytesMessage
+    } finally {
+        file delete -force $root
+    }
+} -result [list \
+    1 "unzip max_entries setting must be a positive integer" \
+    1 "unzip max_uncompressed_bytes setting must be a positive integer"]
+
+::finishTests

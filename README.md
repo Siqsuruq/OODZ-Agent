@@ -755,7 +755,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 118 Passed 118 Skipped 0 Failed 0
+all.tcl: Total 123 Passed 123 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the
@@ -772,6 +772,7 @@ CLI -> tAgent -> DeepSeek
                                      save_translation
                                      make_directory/edit_file/apply_patch
                                      copy_file/move_file/delete_file/write_file
+                                     zip/unzip
 ```
 
 Conversation and tool-call history is saved after each successful interactive

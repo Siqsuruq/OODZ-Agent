@@ -245,7 +245,7 @@ test client-json-1.4 {DeepSeek payload includes plugin tool definitions} -body {
         $registry destroy
         $config destroy
     }
-} -result [list 47 false disabled function read_file object [list path]]
+} -result [list 49 false disabled function read_file object [list path]]
 
 test client-stream-1.1 {streaming assembles content and tool-call deltas} -body {
     set config [::FakeConfig new [dict create LLM.api_key "test-only-key"]]

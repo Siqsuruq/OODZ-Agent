@@ -10,9 +10,7 @@ test startup-paths-1.1 {main loads outside the project directory} -body {
         cd [file dirname $projectDir]
         $child eval [list source [file join $projectDir main.tcl]]
         $child eval {expr {
-            [llength [info commands ::main]] == 1
-            && [llength [info commands ::tAgent]] == 1
-            && [llength [info commands ::tLLMClient]] == 1
+            [llength [info commands ::main]] == 1 && [llength [info commands ::tAgent]] == 1 && [llength [info commands ::tLLMClient]] == 1
         }}
     } finally {
         cd $originalDirectory
@@ -21,24 +19,14 @@ test startup-paths-1.1 {main loads outside the project directory} -body {
 } -result 1
 
 test workspace-root-1.1 {workspace root supports relative and absolute paths} -body {
-    set temporaryRoot [file join [temporaryDirectory] \
-        "oodz-workspace-test-[pid]-[clock clicks]"]
+    set temporaryRoot [file join [temporaryDirectory] oodz-workspace-test-[pid]-[clock clicks]"]
     file mkdir [file join $temporaryRoot relative]
     try {
         set relative [::resolveWorkspaceRoot $temporaryRoot relative]
-        set absolute [::resolveWorkspaceRoot \
-            $projectDir [file join $temporaryRoot relative]]
-        set missingCode [catch {
-            ::resolveWorkspaceRoot $temporaryRoot missing
-        } missingMessage]
-        set emptyCode [catch {
-            ::resolveWorkspaceRoot $temporaryRoot "  "
-        } emptyMessage]
-        list \
-            [expr {$relative eq [file join $temporaryRoot relative]}] \
-            [expr {$absolute eq $relative}] \
-            $missingCode $missingMessage \
-            $emptyCode $emptyMessage
+        set absolute [::resolveWorkspaceRoot $projectDir [file join $temporaryRoot relative]]
+        set missingCode [catch { ::resolveWorkspaceRoot $temporaryRoot missing } missingMessage]
+        set emptyCode [catch { ::resolveWorkspaceRoot $temporaryRoot "  " } emptyMessage]
+        list [expr {$relative eq [file join $temporaryRoot relative]}] [expr {$absolute eq $relative}] $missingCode $missingMessage $emptyCode $emptyMessage
     } finally {
         file delete -force $temporaryRoot
     }
@@ -93,8 +81,7 @@ test workspace-instructions-1.1 {workspace instructions are confined bounded UTF
     close $invalidChannel
 
     try {
-        set loaded [::loadWorkspaceInstructions \
-            $temporaryRoot docs/PROJECT.md]
+        set loaded [::loadWorkspaceInstructions $temporaryRoot docs/PROJECT.md]
         set disabled [::loadWorkspaceInstructions $temporaryRoot ""]
         set absoluteCode [catch {
             ::loadWorkspaceInstructions $temporaryRoot $validPath
