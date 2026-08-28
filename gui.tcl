@@ -21,22 +21,27 @@ namespace eval ::oodzGui {
     variable darkTheme 0
 }
 source [file join $::oodzGui::scriptDir main.tcl]
+lappend ::auto_path [file join $::oodzGui::scriptDir lib oodzMarkdownTk]
+package require oodzMarkdownTk 0.1.0
 
 proc ::oodzGui::appendMessage {role content} {
     .conversation configure -state normal
     if {$role ne ""} {
         .conversation insert end "$role\n" "${role}Label"
     }
-    .conversation insert end "$content\n\n" $role
+    if {$role eq "Assistant"} {
+        ::oodzMarkdownTk::render .conversation $content assistant
+        .conversation insert end "\n"
+    } else {
+        .conversation insert end "$content\n\n" $role
+    }
     .conversation configure -state disabled
     .conversation see end
     update idletasks
 }
 
 proc ::oodzGui::streamChunk {chunk} {
-    .conversation configure -state normal
-    .conversation insert end $chunk assistant
-    .conversation configure -state disabled
+    ::oodzMarkdownTk::append .conversation $chunk
     .conversation see end
     update idletasks
 }
@@ -143,12 +148,15 @@ proc ::oodzGui::send {} {
     .conversation configure -state normal
     .conversation insert end "Assistant\n" assistantLabel
     .conversation configure -state disabled
+    ::oodzMarkdownTk::begin .conversation assistant
     update idletasks
     if {[catch {$agent run $task} result]} {
+        ::oodzMarkdownTk::finish .conversation
         ::oodzGui::appendMessage Error "Error: $result"
     } else {
+        ::oodzMarkdownTk::finish .conversation
         .conversation configure -state normal
-        .conversation insert end "\n\n"
+        .conversation insert end "\n"
         .conversation configure -state disabled
         .conversation see end
     }
@@ -450,6 +458,7 @@ proc ::oodzGui::buildWidgets {} {
     .conversation tag configure AssistantLabel -foreground #87d7ff
     .conversation tag configure Error -foreground #ff6b6b
     .conversation tag configure ErrorLabel -foreground #ff6b6b
+    ::oodzMarkdownTk::attach .conversation
     text .input -height 5 -wrap word -padx 8 -pady 8 -selectbackground #5294e2 -selectforeground white
     ttk::frame .actions
     ttk::button .send -text "Send" -command ::oodzGui::send

@@ -1,0 +1,105 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+package require oodzMarkdownTk 0.1.0
+
+::oo::class create ::MarkdownFakeText {
+    variable content state
+
+    constructor {} {
+        set content ""
+        set state disabled
+    }
+
+    method cget {option} {
+        if {$option ne "-state"} {error "unsupported option"}
+        return $state
+    }
+
+    method configure {args} {
+        foreach {option value} $args {
+            if {$option eq "-state"} {set state $value}
+        }
+    }
+
+    method index {position} {
+        if {$position ne "end"} {error "unsupported index"}
+        return [string length $content]
+    }
+
+    method insert {position value tags} {
+        if {$position ne "end"} {error "unsupported insertion"}
+        append content $value
+    }
+
+    method delete {first last} {
+        if {$last ne "end"} {error "unsupported deletion"}
+        set content [string range $content 0 [expr {$first - 1}]]
+    }
+
+    method see {position} {return}
+    method content {} {return $content}
+}
+
+test markdown-parser-1.1 {block and inline Markdown produce Tk tag spans} -body {
+    set state [dict create in_fence 0]
+    set results {}
+    foreach line {
+        {# Heading}
+        {- one **bold** and `code`}
+        {> quoted}
+        {```tcl}
+        {puts hello}
+        {```}
+        {[site](https://example.test)}
+    } {
+        lassign [::oodzMarkdownTk::parseLine $state $line] state spans
+        lappend results $spans
+    }
+    list \
+        [lindex [lindex [lindex $results 0] 0] 1] \
+        [lindex [lindex [lindex $results 1] 1] 1] \
+        [lindex [lindex [lindex $results 1] 2] 1] \
+        [lindex [lindex [lindex $results 2] 0] 1] \
+        [lindex [lindex [lindex $results 3] 0] 0] \
+        [lindex [lindex [lindex $results 4] 0] 1] \
+        [dict get $state in_fence] \
+        [lindex [lindex [lindex $results 6] 0] 0] \
+        [lindex [lindex [lindex $results 6] 0] 1]
+} -result [list \
+    {assistant mdHeading mdH1} \
+    {assistant mdList} \
+    {assistant mdList mdBold} \
+    {assistant mdQuote} \
+    "tcl\n" \
+    {assistant mdCodeBlock} \
+    0 \
+    {site (https://example.test)} \
+    {assistant mdLink}]
+
+test markdown-parser-1.2 {incomplete delimiters remain literal text} -body {
+    set spans [::oodzMarkdownTk::inline \
+        {unfinished **bold and `code} [list assistant]]
+    list [join [lmap span $spans {lindex $span 0}] ""] \
+        [lmap span $spans {lindex $span 1}]
+} -result [list {unfinished **bold and `code} [list assistant]]
+
+test markdown-stream-1.1 {streaming reparses tokens split across chunks} -body {
+    set widget [::MarkdownFakeText new]
+    try {
+        ::oodzMarkdownTk::begin $widget
+        foreach chunk [list \
+            {# He} \
+            "ading\nA **bo" \
+            "ld** word\n```tc" \
+            "l\nputs ok\n```"] {
+            ::oodzMarkdownTk::append $widget $chunk
+        }
+        ::oodzMarkdownTk::finish $widget
+        $widget content
+    } finally {
+        $widget destroy
+    }
+} -result "Heading\nA bold word\ntcl\nputs ok\n"
+
+::finishTests

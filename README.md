@@ -197,6 +197,11 @@ are optional, so existing personal manifests remain compatible.
 When both Arc variants are installed, the GUI action bar provides a runtime
 **Dark** toggle. It changes the current session only; `GUI.theme` remains the
 startup preference.
+Assistant responses are rendered incrementally by the bundled
+`oodzMarkdownTk` package. It styles headings, emphasis, inline code, fenced
+code blocks, lists, blockquotes, rules, and links directly in the Tk text
+widget. Markdown remains inert text: HTML, Tcl, code blocks, and links are not
+executed or opened automatically.
 - `Logging.file`: Diagnostic log path, resolved relative to the project unless
   absolute.
 - `Logging.level`: Minimum global log level.
@@ -644,7 +649,8 @@ wish gui.tcl
 
 The desktop interface provides a conversation view, multiline input,
 streaming responses, persistent history, New/Send controls, and write approval
-dialogs. Its Tools dialog lists every available tool, displays its description
+dialogs. Assistant Markdown is styled while it streams without reparsing the
+entire conversation. Its Tools dialog lists every available tool, displays its description
 and JSON argument schema, and can invoke it locally without calling the LLM.
 Press `Ctrl+Enter` to send a prompt or run a selected tool. It uses the same
 configuration, workspace, plugins, and OODZ reference as the terminal interface.
@@ -760,7 +766,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 128 Passed 128 Skipped 0 Failed 0
+all.tcl: Total 131 Passed 131 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the

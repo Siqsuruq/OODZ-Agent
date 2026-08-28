@@ -9,6 +9,7 @@ packages are part of the supported OODZ Agent runtime:
 | `tConfClass` 1.0 | Configuration object with the INI backend |
 | `tLogger` 1.0.0 | Application diagnostics |
 | `zesty` 0.2 | Interactive terminal styling and banner rendering |
+| `oodzMarkdownTk` 0.1.0 | Incremental, inert Markdown styling for Tk text widgets |
 
 The project test suite covers package loading, an INI save/load round trip,
 logger use through the application, and the Zesty presentation integration.
@@ -23,4 +24,3 @@ and test step.
 
 OODZ Agent's API JSON handling is unrelated to the optional tConf JSON backend;
 it uses Tcllib's installed `json` and `json::write` packages directly.
-
