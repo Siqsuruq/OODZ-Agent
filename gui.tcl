@@ -19,10 +19,12 @@ namespace eval ::oodzGui {
     variable toolDefinitions [dict create]
     variable contextWidget ""
     variable darkTheme 0
+	variable streamCount 0
 }
 source [file join $::oodzGui::scriptDir main.tcl]
 lappend ::auto_path [file join $::oodzGui::scriptDir lib oodzMarkdownTk]
 package require oodzMarkdownTk 0.1.0
+package require Tk 9.0
 
 proc ::oodzGui::appendMessage {role content} {
     .conversation configure -state normal
@@ -41,6 +43,8 @@ proc ::oodzGui::appendMessage {role content} {
 }
 
 proc ::oodzGui::streamChunk {chunk} {
+    variable streamCount
+    incr streamCount
     ::oodzMarkdownTk::append .conversation $chunk
     .conversation see end
     update idletasks
@@ -513,7 +517,7 @@ proc ::oodzGui::start {} {
     variable config
     variable backend
     variable historyStore
-    package require Tk 9.0
+    
     set config [::Config new]
     set backend [::Config::Backend::Ini new]
     $config useBackend $backend [file join $scriptDir conf conf.ini]
@@ -543,11 +547,7 @@ proc ::oodzGui::start {} {
     }
     set projectTestsEnabled false
     if {$runnerEnabled} {
-        set processRunner [tProcessRunner new $workspaceRoot \
-            [$config get Runner.tclsh tclsh9.0] \
-            [$config get Runner.timeout_ms 10000] \
-            [$config get Runner.max_output_chars 65536] "" \
-            [dict create fossil [$config get Executables.fossil fossil]]]
+        set processRunner [tProcessRunner new $workspaceRoot [$config get Runner.tclsh tclsh9.0] [$config get Runner.timeout_ms 10000] [$config get Runner.max_output_chars 65536] "" [dict create fossil [$config get Executables.fossil fossil]]]
         set projectTestsEnabled [$config get Runner.project_tests_enabled false]
         if {![string is boolean -strict $projectTestsEnabled]} {
             error "Runner.project_tests_enabled must be boolean"
@@ -560,50 +560,27 @@ proc ::oodzGui::start {} {
     if {![string is boolean -strict $pluginLazyLoading]} {
         error "Plugins.lazy_loading must be boolean"
     }
-    set pluginCore [::parsePluginNames [$config get Plugins.core \
-        "read_file,list_files,search_files,file_info,system_info,apply_patch,write_file"]]
-    set pluginDirectories [::resolvePluginDirectories $scriptDir \
-        [$config get Plugins.directories ""]]
+    set pluginCore [::parsePluginNames [$config get Plugins.core "read_file,list_files,search_files,file_info,system_info,apply_patch,write_file"]]
+    set pluginDirectories [::resolvePluginDirectories $scriptDir [$config get Plugins.directories ""]]
     set workerEnabled [$config get Plugins.worker_thread true]
     if {![string is boolean -strict $workerEnabled]} {
         error "Plugins.worker_thread must be boolean"
     }
     if {$workerEnabled} {
-        set runnerConfig [dict create \
-            enabled $runnerEnabled \
-            tclsh [$config get Runner.tclsh tclsh9.0] \
-            timeout_ms [$config get Runner.timeout_ms 10000] \
-            max_output_chars [$config get Runner.max_output_chars 65536] \
-            executable_aliases [dict create fossil \
-                [$config get Executables.fossil fossil]] \
-            project_tests_enabled $projectTestsEnabled \
-            project_tests_executable \
-                [$config get Runner.project_tests_executable tclsh9.0] \
-            project_tests_arguments \
-                [$config get Runner.project_tests_arguments tests/all.tcl] \
-            project_tests_timeout_ms \
-                [$config get Runner.project_tests_timeout_ms 60000]]
-        set pluginWorker [tPluginWorker new \
-            $scriptDir $workspaceRoot $pluginDirectories \
-            [$config get Plugins.timeout_ms 1000] \
-            [$config get Plugins.max_output_chars 65536] \
-            $referenceRoots $runnerConfig]
+        set runnerConfig [dict create enabled $runnerEnabled tclsh [$config get Runner.tclsh tclsh9.0] timeout_ms [$config get Runner.timeout_ms 10000] max_output_chars [$config get Runner.max_output_chars 65536] \
+            executable_aliases [dict create fossil [$config get Executables.fossil fossil]] project_tests_enabled $projectTestsEnabled project_tests_executable [$config get Runner.project_tests_executable tclsh9.0] \
+            project_tests_arguments [$config get Runner.project_tests_arguments tests/all.tcl] project_tests_timeout_ms [$config get Runner.project_tests_timeout_ms 60000]]
+        set pluginWorker [tPluginWorker new $scriptDir $workspaceRoot $pluginDirectories [$config get Plugins.timeout_ms 1000] [$config get Plugins.max_output_chars 65536] $referenceRoots $runnerConfig]
     }
     set modelInfoCallback ""
     if {"modelInfo" in [info object methods $client -all]} {
         set modelInfoCallback [list $client modelInfo]
     }
-    set registry [tPluginRegistry new $workspaceRoot $pluginDirectories \
-        ::oodzGui::approve [$config get Plugins.timeout_ms 1000] \
-        [$config get Plugins.max_output_chars 65536] $referenceRoots \
-        $skillRegistry $instructionRegistry $processRunner \
-        $pluginLazyLoading $pluginCore "" $pluginWorker $modelInfoCallback]
-    set systemRole [::buildAgentSystemRole $config $instructions \
-        [$skillRegistry summaries] [$instructionRegistry enabled] \
-        $runnerEnabled $pluginLazyLoading]
+    set registry [tPluginRegistry new $workspaceRoot $pluginDirectories ::oodzGui::approve [$config get Plugins.timeout_ms 1000] \
+        [$config get Plugins.max_output_chars 65536] $referenceRoots $skillRegistry $instructionRegistry $processRunner $pluginLazyLoading $pluginCore "" $pluginWorker $modelInfoCallback]
+    set systemRole [::buildAgentSystemRole $config $instructions [$skillRegistry summaries] [$instructionRegistry enabled] $runnerEnabled $pluginLazyLoading]
     set systemRole [::addModelIdentityToSystemRole $systemRole $client]
-    set agent [tAgent new [$config get Agent.name] $systemRole \
-        $client $registry [$config get Agent.max_iterations 16] ::oodzGui::streamChunk [$config get Agent.max_history_messages 40] [$config get Agent.summarize_history false]]
+    set agent [tAgent new [$config get Agent.name] $systemRole $client $registry [$config get Agent.max_iterations 16] ::oodzGui::streamChunk [$config get Agent.max_history_messages 40] [$config get Agent.summarize_history false]]
     set historyPath [$config get Agent.history_file .oodz/history.json]
     if {[file pathtype $historyPath] ne "absolute"} {
         set historyPath [file join $scriptDir $historyPath]

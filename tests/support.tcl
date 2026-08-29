@@ -27,8 +27,7 @@ package require tLogger
 # runAllTests executes each .test file in a child process. Application logs on
 # stderr make Tcl's pipeline close report an error even when every assertion
 # passed, so keep diagnostics in the test temporary directory.
-set testLogPath [file join [::tcltest::temporaryDirectory] \
-    "oodz-tests-[pid].log"]
+set testLogPath [file join [::tcltest::temporaryDirectory] "oodz-tests-[pid].log"]
 ::tLogger setAppenderFactory [list ::FileAppender new $testLogPath]
 
 source [file join $projectDir main.tcl]
