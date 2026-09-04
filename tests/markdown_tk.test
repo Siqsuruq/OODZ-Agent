@@ -33,8 +33,20 @@ package require oodzMarkdownTk 0.1.0
     }
 
     method delete {first last} {
-        if {$last ne "end"} {error "unsupported deletion"}
-        set content [string range $content 0 [expr {$first - 1}]]
+        if {[regexp {^end - 1 chars - ([0-9]+) chars$} \
+                $first -> count]
+                && $last eq "end - 1 chars"} {
+            set content [string range $content 0 \
+                [expr {[string length $content] - $count - 1}]]
+            return
+        }
+        if {[regexp {^end - ([0-9]+) chars$} $first -> count]
+                && $last eq "end"} {
+            set content [string range $content 0 \
+                [expr {[string length $content] - $count - 1}]]
+            return
+        }
+        error "unsupported deletion"
     }
 
     method see {position} {return}
@@ -71,7 +83,7 @@ test markdown-parser-1.1 {block and inline Markdown produce Tk tag spans} -body 
     {assistant mdList} \
     {assistant mdList mdBold} \
     {assistant mdQuote} \
-    "tcl\n" \
+    "Tcl\n" \
     {assistant mdCodeBlock} \
     0 \
     {site (https://example.test)} \
@@ -100,6 +112,6 @@ test markdown-stream-1.1 {streaming reparses tokens split across chunks} -body {
     } finally {
         $widget destroy
     }
-} -result "Heading\nA bold word\ntcl\nputs ok\n"
+} -result "Heading\nA bold word\nTcl\nputs ok\n"
 
 ::finishTests

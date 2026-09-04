@@ -1,0 +1,20 @@
+# Core plugins shipped with OODZ Agent.
+# These tools remain visible to the model when lazy loading is enabled.
+
+# Filesystem inspection
+read_file
+list_files
+list_folders
+search_files
+file_info
+system_info
+
+# Filesystem changes
+apply_patch
+create_file
+write_file
+edit_file
+copy_file
+move_file
+delete_file
+make_directory

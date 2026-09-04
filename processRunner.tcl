@@ -1,6 +1,6 @@
 ::oo::class create tProcessRunner {
     variable workspaceRoot tclExecutable
-    variable timeoutMs maxOutput executor channel output done overflow
+    variable timeoutMs maxOutput activeMaxOutput executor channel output done overflow
     variable processIds watchdog terminationReason
     variable projectTestsEnabled projectTestsExecutable
     variable projectTestsArguments projectTestsTimeout
@@ -27,6 +27,7 @@
         }
         set timeoutMs $configuredTimeoutMs
         set maxOutput $configuredMaxOutput
+        set activeMaxOutput $maxOutput
         set executor $configuredExecutor
         if {[catch {dict size $configuredExecutableAliases}]} {
             error "Executable aliases must be a dictionary"
@@ -121,6 +122,36 @@
         return [my execute $command]
     }
 
+    method runExternalCommand {
+        executable arguments workingDirectory executionTimeout outputLimit
+    } {
+        if {[catch {llength $arguments}]} {
+            error "External command arguments must be a valid Tcl list"
+        }
+        set resolvedExecutable [my resolveExecutable \
+            $executable "Command executable"]
+        set workingDirectory [file normalize $workingDirectory]
+        if {![::PluginSupport::isWithin $workingDirectory $workspaceRoot]} {
+            error "Command working directory escapes the workspace"
+        }
+        if {![file isdirectory $workingDirectory]} {
+            error "Command working directory is not a directory"
+        }
+        if {![string is entier -strict $executionTimeout]
+                || $executionTimeout <= 0} {
+            error "Command timeout must be a positive integer"
+        }
+        if {![string is entier -strict $outputLimit] || $outputLimit <= 0} {
+            error "Command output limit must be a positive integer"
+        }
+        set command [list $resolvedExecutable {*}$arguments]
+        if {$executor ne ""} {
+            return [{*}$executor $command $executionTimeout $outputLimit]
+        }
+        return [my execute $command $executionTimeout \
+            $workingDirectory $outputLimit]
+    }
+
     method buildTclCommand {relativePath} {
         if {[file pathtype $relativePath] ne "relative"} {
             error "Runner paths must be relative to the workspace"
@@ -137,10 +168,19 @@
         return [list $tclExecutable $path]
     }
 
-    method execute {command {executionTimeout ""}} {
+    method execute {
+        command {executionTimeout ""} {workingDirectory ""} {outputLimit ""}
+    } {
         if {$executionTimeout eq ""} {
             set executionTimeout $timeoutMs
         }
+        if {$workingDirectory eq ""} {
+            set workingDirectory $workspaceRoot
+        }
+        if {$outputLimit eq ""} {
+            set outputLimit $maxOutput
+        }
+        set activeMaxOutput $outputLimit
         set output ""
         set done 0
         set overflow 0
@@ -149,7 +189,7 @@
         set pipeline [concat [list |] $command [list 2>@1]]
         set previousDirectory [pwd]
         try {
-            cd $workspaceRoot
+            cd $workingDirectory
             set channel [open $pipeline r]
         } finally {
             cd $previousDirectory
@@ -205,8 +245,9 @@
             return
         }
         append output $chunk
-        if {[string length $output] > $maxOutput} {
-            set output [string range $output 0 [expr {$maxOutput - 1}]]
+        if {[string length $output] > $activeMaxOutput} {
+            set output [string range $output 0 \
+                [expr {$activeMaxOutput - 1}]]
             set overflow 1
             my terminate output-limit
             return

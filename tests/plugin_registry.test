@@ -23,9 +23,9 @@ test plugins-1.1 {built-in plugins are discovered and invoked} -body {
         $registry destroy
     }
 } -result [list \
-    [list apply_patch copy_file delete_file edit_file file_info fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_files list_folders make_directory move_file oodz_lookup oodz_read oodz_search random_string read_file save_translation search_files system_info unzip write_file xml_validate zip] \
+    [list apply_patch copy_file create_file delete_file edit_file file_info fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_files list_folders make_directory move_file oodz_lookup oodz_read oodz_search random_string read_file save_translation search_files system_info unzip write_file xml_validate zip] \
     1 1 1 \
-    [list apply_patch copy_file delete_file edit_file file_info fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_files list_folders make_directory move_file oodz_lookup oodz_read oodz_search random_string read_file save_translation search_files system_info unzip write_file xml_validate zip]]
+    [list apply_patch copy_file create_file delete_file edit_file file_info fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_files list_folders make_directory move_file oodz_lookup oodz_read oodz_search random_string read_file save_translation search_files system_info unzip write_file xml_validate zip]]
 
 test plugins-lazy-1.1 {lazy registry exposes core tools and activates index matches} -body {
     set registry [::tPluginRegistry new \
@@ -98,6 +98,18 @@ test plugins-lazy-1.3 {model cannot invoke a plugin before activation} -body {
     }
 } -result [list \
     1 "Plugin is not active for the model: file_info" 1]
+
+test plugins-lazy-1.4 {capability synonyms find the delete plugin} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" "" true [list read_file]]
+    try {
+        set matches [$registry search "remove unlink" 1]
+        dict get [lindex $matches 0] name
+    } finally {
+        $registry destroy
+    }
+} -result delete_file
 
 test plugins-metadata-1.1 {metadata filters availability and enriches search} -body {
     set registry [::tPluginRegistry new \

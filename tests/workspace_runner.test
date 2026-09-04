@@ -62,6 +62,41 @@ test plugin-directories-1.1 {personal plugin roots support relative and absolute
     3 1 1 1 \
     1 "Plugin directory does not exist: missing"]
 
+test core-plugin-files-1.1 {public and private core plugin files are merged} -body {
+    set root [file normalize [file join [temporaryDirectory] \
+        "oodz-core-files-[pid]-[clock clicks]"]]
+    file mkdir [file join $root conf] [file join $root plugins] \
+        [file join $root private]
+    set public [open [file join $root conf core-plugins.txt] w]
+    puts $public "# public\nread_file\nwrite_file\nread_file\n"
+    close $public
+    set private [open [file join $root private core-plugins.txt] w]
+    puts $private "# private\nmodule_info\nwrite_file\n"
+    close $private
+    try {
+        set merged [::loadCorePlugins $root [list \
+            [file join $root plugins] [file join $root private]]]
+        set bad [open [file join $root private core-plugins.txt] w]
+        puts $bad "bad-name"
+        close $bad
+        set invalidCode [catch {::loadCorePlugins $root [list \
+            [file join $root plugins] [file join $root private]]} \
+            invalidMessage]
+        file delete [file join $root conf core-plugins.txt]
+        set missingCode [catch {::loadCorePlugins $root [list \
+            [file join $root plugins]]} missingMessage]
+        list $merged $invalidCode \
+            [expr {[string first "Invalid core plugin name" \
+                $invalidMessage] == 0}] \
+            $missingCode \
+            [expr {[string first "Core plugin file does not exist" \
+                $missingMessage] == 0}]
+    } finally {
+        file delete -force $root
+    }
+} -result [list \
+    [list read_file write_file module_info] 1 1 1 1]
+
 test workspace-instructions-1.1 {workspace instructions are confined bounded UTF-8} -body {
     set temporaryRoot [file join [temporaryDirectory] \
         "oodz-instructions-test-[pid]-[clock clicks]"]

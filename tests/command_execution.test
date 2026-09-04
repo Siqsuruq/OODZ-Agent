@@ -1,0 +1,124 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test command-execution-1.1 {allowlisted structured command is approved and executed} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] command-execution-[pid]-[clock clicks]]]
+    file mkdir $root
+    set channel [open [file join $root hello.tcl] w]
+    puts $channel {puts "hello command"}
+    close $channel
+    set runner [tProcessRunner new $root [info nameofexecutable] 1000 4096]
+    set policies [dict create tcl [dict create \
+        executable [info nameofexecutable] \
+        allowed_prefixes [list hello.tcl]]]
+    set executor [tCommandExecutor new \
+        $root $runner allowlist $policies 1000 5000 4096]
+    set registry [tPluginRegistry new $root \
+        [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" "" \
+        false {} "" "" "" $executor]
+    set arguments [::json::write object \
+        executable [::json::write string tcl] \
+        arguments [::json::write array \
+            [::json::write string hello.tcl]]]
+    try {
+        set ::ApprovalMock::approved 0
+        set ::ApprovalMock::calls {}
+        set deniedCode [catch {$registry invoke exec_command $arguments} denied]
+        set ::ApprovalMock::approved 1
+        set result [$registry invoke exec_command $arguments]
+        set prepared [lindex [lindex $::ApprovalMock::calls end] 1]
+        list $deniedCode $denied $result \
+            [dict get $prepared logical_executable] \
+            [file tail [dict get $prepared resolved_executable]] \
+            [dict get $prepared working_directory] \
+            [expr {"exec_command" in [lmap definition \
+                [$registry definitions] {dict get $definition name}]}]
+    } finally {
+        $registry destroy
+        $executor destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: exec_command" \
+    "hello command" tcl [file tail [info nameofexecutable]] . 1]
+
+test command-execution-1.2 {allowlist rejects authority outside its policy} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] command-policy-[pid]-[clock clicks]]]
+    file mkdir $root
+    set runner [tProcessRunner new $root [info nameofexecutable] 1000 4096]
+    set executor [tCommandExecutor new $root $runner allowlist \
+        [dict create tcl [dict create \
+            executable [info nameofexecutable] \
+            allowed_prefixes [list allowed.tcl]]] \
+        1000 2000 4096]
+    try {
+        set executableCode [catch {$executor prepare other {} . ""} \
+            executableMessage]
+        set prefixCode [catch {$executor prepare tcl {denied.tcl} . ""} \
+            prefixMessage]
+        set controlCode [catch {$executor prepare tcl \
+            [list allowed.tcl 2>@outside.log] . ""} controlMessage]
+        set escapeCode [catch {$executor prepare tcl \
+            [list allowed.tcl] .. ""} escapeMessage]
+        set timeoutCode [catch {$executor prepare tcl \
+            [list allowed.tcl] . 2001} timeoutMessage]
+        list \
+            $executableCode $executableMessage \
+            $prefixCode $prefixMessage \
+            $controlCode $controlMessage \
+            $escapeCode $escapeMessage \
+            $timeoutCode $timeoutMessage
+    } finally {
+        $executor destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Command executable is not allowed: other" \
+    1 "Command arguments do not match an allowed prefix for: tcl" \
+    1 "Command argument is reserved by Tcl process execution: 2>@outside.log" \
+    1 "Plugin path escapes the workspace" \
+    1 "Command timeout_ms exceeds configured limit: 2000"]
+
+test command-execution-1.3 {unrestricted mode accepts a resolved executable explicitly} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] command-unrestricted-[pid]-[clock clicks]]]
+    file mkdir $root
+    set runner [tProcessRunner new $root [info nameofexecutable] 1000 4096]
+    set executor [tCommandExecutor new \
+        $root $runner unrestricted {} 1000 2000 4096]
+    try {
+        set prepared [$executor prepare [info nameofexecutable] {} . 1500]
+        list \
+            [dict get $prepared resolved_executable] \
+            [dict get $prepared timeout_ms] \
+            [$executor mode]
+    } finally {
+        $executor destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list [file normalize [info nameofexecutable]] 1500 unrestricted]
+
+test command-execution-1.4 {configuration builds explicit executable policies} -body {
+    set config [::FakeConfig new [dict create \
+        CommandExecution.allowed_executables {ffmpeg, git,ffmpeg} \
+        Executables.ffmpeg /tools/ffmpeg \
+        CommandExecution.git.executable /tools/git \
+        CommandExecution.git.allowed_prefixes {{status} {diff --}}]]
+    try {
+        ::buildCommandPolicies $config
+    } finally {
+        $config destroy
+    }
+} -result [dict create \
+    ffmpeg [dict create executable /tools/ffmpeg allowed_prefixes *] \
+    git [dict create executable /tools/git \
+        allowed_prefixes {{status} {diff --}}]]
+
+::finishTests

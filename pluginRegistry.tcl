@@ -117,6 +117,7 @@ namespace eval ::PluginSupport {
     variable currentPlatform unavailablePlugins
     variable pluginWorker
     variable modelInfoCallback
+    variable commandExecutor
 
     constructor {
         configuredWorkspaceRoot pluginDirectories
@@ -131,6 +132,7 @@ namespace eval ::PluginSupport {
         {configuredCorePlugins {}}
         {configuredPlatform ""}
         {configuredPluginWorker ""} {configuredModelInfoCallback ""}
+        {configuredCommandExecutor ""}
     } {
         set workspaceRoot [file normalize $configuredWorkspaceRoot]
         if {![file isdirectory $workspaceRoot]} {
@@ -178,6 +180,12 @@ namespace eval ::PluginSupport {
         set unavailablePlugins [dict create]
         set pluginWorker $configuredPluginWorker
         set modelInfoCallback $configuredModelInfoCallback
+        set commandExecutor $configuredCommandExecutor
+        if {$commandExecutor ne ""
+                && ![info object isa typeof $commandExecutor \
+                    tCommandExecutor]} {
+            error "Invalid command executor"
+        }
         if {$pluginWorker ne ""
                 && ![info object isa typeof $pluginWorker tPluginWorker]} {
             error "Invalid plugin worker"
@@ -392,6 +400,9 @@ namespace eval ::PluginSupport {
         if {$modelInfoCallback ne ""} {
             lappend names model_info
         }
+        if {$commandExecutor ne ""} {
+            lappend names exec_command
+        }
         if {$skillRegistry ne ""} {
             lappend names load_skill
         }
@@ -438,6 +449,15 @@ namespace eval ::PluginSupport {
                 lappend definitions [dict create \
                     name model_info \
                     description "Report the configured LLM provider and model plus the model identifier most recently returned by the API. No credentials or endpoint details are exposed." \
+                    parameters [::json::json2dict $parametersJson] \
+                    parameters_json $parametersJson]
+                continue
+            }
+            if {$name eq "exec_command"} {
+                set parametersJson {{"type":"object","properties":{"executable":{"type":"string","description":"Logical executable name from the configured allowlist, or an executable name/path in unrestricted mode."},"arguments":{"type":"array","items":{"type":"string"},"description":"Direct process arguments. No shell string is accepted."},"working_directory":{"type":"string","description":"Existing workspace-relative directory. Defaults to the workspace root."},"timeout_ms":{"type":"integer","minimum":1,"description":"Optional timeout not exceeding the configured maximum."}},"required":["executable","arguments"],"additionalProperties":false}}
+                lappend definitions [dict create \
+                    name exec_command \
+                    description "Execute one structured external command under the configured professional command policy. Uses direct arguments without a shell, always requires approval, and has no OS sandbox." \
                     parameters [::json::json2dict $parametersJson] \
                     parameters_json $parametersJson]
                 continue
@@ -491,6 +511,34 @@ namespace eval ::PluginSupport {
     }
 
     method invoke {name argumentsJson} {
+        if {$name eq "exec_command" && $commandExecutor ne ""} {
+            if {[catch {::json::json2dict $argumentsJson} arguments]} {
+                error "Invalid JSON arguments for plugin: $name"
+            }
+            set schema [dict create \
+                properties [dict create \
+                    executable [dict create type string] \
+                    arguments [dict create type array] \
+                    working_directory [dict create type string] \
+                    timeout_ms [dict create type integer minimum 1]] \
+                required [list executable arguments]]
+            my validateArguments $name $arguments $schema
+            set workingDirectory "."
+            if {[dict exists $arguments working_directory]} {
+                set workingDirectory [dict get $arguments working_directory]
+            }
+            set requestedTimeout ""
+            if {[dict exists $arguments timeout_ms]} {
+                set requestedTimeout [dict get $arguments timeout_ms]
+            }
+            set prepared [$commandExecutor prepare \
+                [dict get $arguments executable] \
+                [dict get $arguments arguments] \
+                $workingDirectory $requestedTimeout]
+            my requireWriteApproval $name $prepared
+            return [::PluginSupport::formatProcessResult \
+                [$commandExecutor execute $prepared]]
+        }
         if {$name eq "model_info" && $modelInfoCallback ne ""} {
             if {[catch {::json::json2dict $argumentsJson} arguments]} {
                 error "Invalid JSON arguments for plugin: $name"
@@ -649,6 +697,9 @@ namespace eval ::PluginSupport {
         set result {}
         if {$modelInfoCallback ne ""} {
             lappend result model_info
+        }
+        if {$commandExecutor ne ""} {
+            lappend result exec_command
         }
         if {$skillRegistry ne ""} {
             lappend result load_skill

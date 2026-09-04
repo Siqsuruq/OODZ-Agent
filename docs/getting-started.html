@@ -12,7 +12,7 @@
     <a class="navbar-brand fw-bold" href="index.html"><span class="brand-mark">O</span> OODZ Agent</a>
     <div class="collapse navbar-collapse" id="docsNav"><div class="navbar-nav ms-auto">
       <a class="nav-link" href="index.html">Overview</a><a class="nav-link active" href="getting-started.html">Getting started</a>
-      <a class="nav-link" href="architecture.html">Architecture</a><a class="nav-link" href="plugins.html">Plugins</a><a class="nav-link" href="oodz-framework.html">OODZ context</a><a class="nav-link" href="operations.html">Operations</a>
+      <a class="nav-link" href="architecture.html">Architecture</a><a class="nav-link" href="plugins.html">Plugins</a><a class="nav-link" href="oodz-framework.html">OODZ context</a><a class="nav-link" href="operations.html">Operations</a><a class="nav-link" href="download.html">Download</a><a class="nav-link" href="source.html">Source</a>
     </div></div>
   </div></nav>
 
@@ -59,10 +59,11 @@ retry_delay_ms = 250
 
 [Agent]
 name = CoderBot
-role = You are an expert Tcl programmer who writes short, clean code.
+role = You are a professional software engineering agent. Follow the user's requirements precisely, inspect relevant context, use available tools when appropriate, and produce focused, verified changes.
 max_iterations = 16
-max_history_messages = 40
-summarize_history = false
+max_history_messages = 200
+max_history_chars = 120000
+summarize_history = true
 history_file = .oodz/history.json
 
 [Workspace]
@@ -75,7 +76,6 @@ root =
 [Plugins]
 directories =
 lazy_loading = true
-core = read_file,list_files,search_files,file_info,system_info,apply_patch,write_file
 worker_thread = true
 timeout_ms = 10000
 max_output_chars = 65536
@@ -91,6 +91,11 @@ fossil = fossil
 file = .oodz/oodz.log
 level = info
 
+[ChangeTracking]
+enabled = true
+excluded_directories = .git,.hg,.svn,.oodz
+max_hash_bytes = 4194304
+
 [GUI]
 theme_package = ttk::theme::Arc
 theme = Arc-Dark
@@ -103,7 +108,20 @@ max_output_chars = 65536
 project_tests_enabled = false
 project_tests_executable = tclsh9.0
 project_tests_arguments = tests/all.tcl
-project_tests_timeout_ms = 60000</code></pre></div>
+project_tests_timeout_ms = 60000
+
+[CommandExecution]
+enabled = false
+mode = allowlist
+allowed_executables = ffmpeg,ffprobe,rg
+approval = always
+timeout_ms = 60000
+max_timeout_ms = 600000
+max_output_chars = 1048576
+
+[CommandExecution.ffmpeg]
+executable = ffmpeg
+allowed_prefixes = *</code></pre></div>
 <hr>
   <h3>Technical & Contextual Notes</h3>
   <h4>Required Config Options</h4>
@@ -136,13 +154,19 @@ retry_delay_ms = 250</code>
 <hr>
 <h4>Instructions, Plugins and Skills</h4>
 <p><code>Workspace.instructions</code> specifies an optional UTF-8 instruction file. The root-level file is included with every request. When modifying nested files, <code>load_project_instructions</code> locates relevant instruction files by traversing from the workspace root down to the target directory. Instructions closer to the target refine or override conventions for that subtree. Leave the setting empty to disable project instructions entirely.</p>
+<p>The desktop interface can edit the configured workspace instruction file through <strong>File → Edit Workspace Instructions…</strong>. Saving refreshes the running agent, so the instructions apply to its next request without clearing the conversation or restarting the program.</p>
 <hr>
 <p><code>Plugins.directories</code> accepts a comma-separated list of absolute or installation-relative paths to personal plugin directories. Each specified directory must already exist.</p>
-<p>With <code>Plugins.lazy_loading</code> enabled, only the comma-separated <code>Plugins.core</code> set and <code>search_plugins</code> are initially exposed to the model. Plugin manifests form a searchable index; matching tools are activated for the model's next response. The interactive <code>/tool</code> command can still invoke any installed plugin directly.</p>
+<p>With <code>Plugins.lazy_loading</code> enabled, only tools named by the merged <code>core-plugins.txt</code> files and <code>search_plugins</code> are initially exposed to the model. Plugin manifests form a searchable index; matching tools are activated for the model's next response. The interactive <code>/tool</code> command can still invoke any installed plugin directly.</p>
+<p><code>conf/core-plugins.txt</code> contains the public baseline. Each configured personal plugin directory may contain its own optional <code>core-plugins.txt</code> with only its additional private tools. The agent merges all files and removes duplicates. Use one plugin name per line; blank lines and <code>#</code> comment lines are ignored.</p>
+<p><code>Agent.max_history_chars</code> is the approximate context budget for previous messages, while <code>max_history_messages</code> remains a safety ceiling. Complete tool turns are kept together. With <code>summarize_history = true</code>, older excluded turns are compacted into a persistent summary instead of disappearing from the model's context.</p>
+<p><code>ChangeTracking.enabled</code> compares workspace snapshots around each interactive agent turn and displays files that were added, modified, or deleted in both the terminal and GUI. It also reports partial changes when a turn fails. Runtime and VCS metadata directories are excluded by default; small and medium files are checksummed so same-size rewrites are detected.</p>
 <p><code>Plugins.worker_thread = true</code> runs plugin handlers serially in one persistent Tcl worker thread. The main thread retains tool metadata, validation, approvals, model coordination, and Tk state. This keeps the event loop responsive but does not provide operating-system isolation.</p>
+<p><code>CommandExecution.enabled = true</code> exposes an approval-gated <code>exec_command</code> tool. <code>mode = allowlist</code> permits configured executable names and argument prefixes; <code>mode = unrestricted</code> permits any resolvable executable and is full user-account process authority. Arguments are passed directly without a shell. Working directories remain inside the workspace, but commands are not OS-sandboxed.</p>
 <hr>
 <p><code>Skills.directories</code> accepts a comma-separated list of personal skill directories. Skill names and their trigger descriptions are included in the system prompt; full instructions are loaded only when the model invokes <code>load_skill</code>.
 The built-in <code>skills/</code> directory is always loaded; additional personal skill roots can be placed anywhere and are specified via <code>Skills.directories</code>.
+The included <code>debug-failing-test</code> skill is a small, language-independent example that can be copied when creating another public skill.
 </p>
 
 <hr>

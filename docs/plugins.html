@@ -9,7 +9,7 @@
 <body>
   <nav class="navbar navbar-expand-lg navbar-dark sticky-top docs-navbar"><div class="container">
     <a class="navbar-brand fw-bold" href="index.html"><span class="brand-mark">O</span> OODZ Agent</a>
-    <div class="collapse navbar-collapse" id="docsNav"><div class="navbar-nav ms-auto"><a class="nav-link" href="index.html">Overview</a><a class="nav-link" href="getting-started.html">Getting started</a><a class="nav-link" href="architecture.html">Architecture</a><a class="nav-link active" href="plugins.html">Plugins</a><a class="nav-link" href="oodz-framework.html">OODZ context</a><a class="nav-link" href="operations.html">Operations</a></div></div>
+    <div class="collapse navbar-collapse" id="docsNav"><div class="navbar-nav ms-auto"><a class="nav-link" href="index.html">Overview</a><a class="nav-link" href="getting-started.html">Getting started</a><a class="nav-link" href="architecture.html">Architecture</a><a class="nav-link active" href="plugins.html">Plugins</a><a class="nav-link" href="oodz-framework.html">OODZ context</a><a class="nav-link" href="operations.html">Operations</a><a class="nav-link" href="download.html">Download</a><a class="nav-link" href="source.html">Source</a></div></div>
   </div></nav>
   <main class="container py-5">
     <div class="section-heading"><span>Tools</span><h1 class="display-4">Plugin development</h1><p class="lead text-secondary">Extend the agent with declarative schemas and small Tcl handlers.</p></div>
@@ -136,7 +136,7 @@ proc ::plugins::my_tool::execute {workspaceRoot arguments settings} {
 		<section id="built-in">
 			<h2>Built-in tools</h2>
 			<div class="row g-3">
-				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>read_file</code></h3><p>Read one UTF-8 workspace file.</p></div></div></div>
+				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>read_file</code></h3><p>Read an exact UTF-8 workspace file or an inclusive, numbered range of at most 200 lines with <code>start_line</code> and <code>end_line</code>.</p></div></div></div>
 				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>list_files</code></h3><p>List files at a workspace-relative path.</p></div></div></div>
 				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>list_folders</code></h3><p>List only immediate folders at a workspace-relative path.</p></div></div></div>
 				<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="permission read">read</span><h3 class="mt-3"><code>system_info</code></h3><p>Report the OS, architecture, Tcl runtime, thread package, executable, and workspace.</p></div></div></div>

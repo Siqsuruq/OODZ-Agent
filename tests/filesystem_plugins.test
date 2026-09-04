@@ -369,6 +369,7 @@ test write-file-1.5 {approve all never bypasses Tcl execution approval} -body {
         puts $inputChannel "all"
         puts $inputChannel "y"
         puts $inputChannel "y"
+        puts $inputChannel "y"
         flush $inputChannel
         seek $inputChannel 0
         set arguments [dict create path script.tcl]
@@ -378,20 +379,27 @@ test write-file-1.5 {approve all never bypasses Tcl execution approval} -body {
             $inputChannel $outputChannel run_tcl_file $arguments]
         set projectResult [::requestPluginApproval \
             $inputChannel $outputChannel run_project_tests [dict create]]
+        set commandResult [::requestPluginApproval \
+            $inputChannel $outputChannel exec_command [dict create \
+                resolved_executable /usr/bin/example \
+                arguments [list --version] \
+                resolved_working_directory /workspace \
+                timeout_ms 1000]]
         flush $outputChannel
         seek $outputChannel 0
         set prompts [read $outputChannel]
         list \
-            $writeResult $runnerResult $projectResult \
+            $writeResult $runnerResult $projectResult $commandResult \
             [expr {[string first "No OS sandbox may be active" \
-                $prompts] >= 0}]
+                $prompts] >= 0}] \
+            [expr {[string first "/usr/bin/example" $prompts] >= 0}]
     } finally {
         set ::approveAllWritesForSession 0
         close $inputChannel
         close $outputChannel
         file delete $inputPath $outputPath
     }
-} -result [list 1 1 1 1]
+} -result [list 1 1 1 1 1 1]
 
 
 ::finishTests

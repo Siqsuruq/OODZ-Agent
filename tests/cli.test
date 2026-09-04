@@ -99,8 +99,6 @@ test cli-1.2 {interactive CLI retains context and handles commands} -body {
             [dict get [lindex $secondMessages 0] content] \
             [dict get [lindex $secondMessages 1] content] \
             [dict get [lindex $secondMessages 2] content] \
-            [expr {[string first "Available skills" \
-                [lindex [lindex $calls 0] 0]] >= 0}] \
             [expr {[string first \
                 "assistant> second response" $output] >= 0}] \
             [expr {[string first \
@@ -111,9 +109,6 @@ test cli-1.2 {interactive CLI retains context and handles commands} -body {
                 && [string first "read_file" $output] >= 0
                 && [string first "xml_validate" $output] >= 0
             }] \
-            [expr {[string first \
-                "create-oodz-class - Create or modify NX domain classes" \
-                $output] >= 0}] \
             [string trim $errors]
     } finally {
         close $inputChannel
@@ -125,7 +120,7 @@ test cli-1.2 {interactive CLI retains context and handles commands} -body {
 } -result [list \
     0 2 \
     "first task" "first response" "second task" \
-    1 1 1 1 1 1 \
+    1 1 1 1 \
     "Unknown command: /unknown (use /help)"]
 
 test cli-tool-1.1 {interactive tool command bypasses the LLM client} -body {

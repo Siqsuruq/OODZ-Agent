@@ -64,7 +64,8 @@ test random-string-1.2 {random_string rejects invalid and excessive lengths} -bo
     1 "random_string length exceeds configured limit: 4096"]
 
 test skills-tool-1.1 {load_skill exposes one selected workflow on demand} -body {
-    set skills [::tSkillRegistry new [list [file join $projectDir skills]]]
+    set skills [::tSkillRegistry new [list \
+        [file join $projectDir tests fixtures skills]]]
     set registry [::tPluginRegistry new \
         $projectDir [list [file join $projectDir plugins]] \
         "" 1000 65536 {} $skills]
@@ -86,12 +87,12 @@ test skills-tool-1.1 {load_skill exposes one selected workflow on demand} -body 
         }
         set instructions [$registry invoke load_skill \
             [::json::write object name \
-                [::json::write string create-oodz-class]]]
+                [::json::write string example-workflow]]]
         list \
             [expr {"load_skill" in [$registry names]}] \
             [expr {"load_skill" in $definitionNames}] \
             [dict get $loadDefinition function parameters type] \
-            [expr {[string first "Use `oodz_lookup`" $instructions] >= 0}]
+            [expr {[string first "smallest relevant change" $instructions] >= 0}]
     } finally {
         $client destroy
         $config destroy
@@ -174,6 +175,64 @@ test oodz-lookup-1.1 {oodz_lookup finds compact framework capabilities} -body {
     1 1 1 \
     "No OODZ components found for: nonexistent capability" \
     1 "OODZ lookup query must not be empty"]
+
+test read-file-range-1.1 {read_file preserves full reads and supports numbered ranges} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "read-range-test-[pid]-[clock clicks]"]
+    file mkdir $temporaryRoot
+    set path [file join $temporaryRoot sample.tcl]
+    set channel [open $path wb]
+    puts -nonewline $channel [encoding convertto utf-8 \
+        "first\nстрока два\n行三\nfourth"]
+    close $channel
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]]]
+    try {
+        set full [$registry invoke read_file [::json::write object \
+            path [::json::write string sample.tcl]]]
+        set ranged [$registry invoke read_file [::json::write object \
+            path [::json::write string sample.tcl] \
+            start_line 2 end_line 3]]
+        set defaultEnd [$registry invoke read_file [::json::write object \
+            path [::json::write string sample.tcl] start_line 3]]
+        list $full $ranged $defaultEnd
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    "first\nстрока два\n行三\nfourth" \
+    "2: строка два\n3: 行三" \
+    "3: 行三\n4: fourth"]
+
+test read-file-range-1.2 {read_file rejects invalid and excessive ranges} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "read-range-errors-[pid]-[clock clicks]"]
+    file mkdir $temporaryRoot
+    set channel [open [file join $temporaryRoot sample.txt] w]
+    puts $channel "one\ntwo"
+    close $channel
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]]]
+    try {
+        set results {}
+        foreach range {{0 1} {2 1} {1 201} {20 21}} {
+            lassign $range start end
+            lappend results [catch {$registry invoke read_file \
+                [::json::write object \
+                    path [::json::write string sample.txt] \
+                    start_line $start end_line $end]} message] $message
+        }
+        set results
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    1 "start_line must be a positive integer" \
+    1 "end_line must be an integer greater than or equal to start_line" \
+    1 "read_file ranges are limited to 200 lines" \
+    1 "start_line exceeds file length: sample.txt"]
 
 test oodz-read-1.1 {oodz_read returns confined bounded numbered UTF-8 lines} -body {
     set temporaryRoot [file join [temporaryDirectory] \

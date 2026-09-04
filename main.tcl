@@ -21,6 +21,8 @@ source [file join $scriptDir conversationStore.tcl]
 source [file join $scriptDir skillRegistry.tcl]
 source [file join $scriptDir instructionRegistry.tcl]
 source [file join $scriptDir processRunner.tcl]
+source [file join $scriptDir commandExecutor.tcl]
+source [file join $scriptDir workspaceChangeTracker.tcl]
 
 proc ::usage {} {
     return "Usage: tclsh main.tcl ?task?"
@@ -67,7 +69,7 @@ proc ::buildAgentSystemRole {
     if {$pluginLazyLoading} {
         append systemRole \
             "\nOnly core and previously activated plugins are initially available." \
-            " When the task needs another capability, call search_plugins with concise capability words." \
+            " If a required tool is not visible, you must call search_plugins with concise capability words before claiming the capability is unavailable." \
             " Matching plugins are activated for your next response."
     }
     return $systemRole
@@ -95,6 +97,79 @@ proc ::parsePluginNames {configuredNames} {
         }
     }
     return $names
+}
+
+proc ::readCorePluginFile {path {required false}} {
+    if {![file exists $path]} {
+        if {$required} {error "Core plugin file does not exist: $path"}
+        return {}
+    }
+    if {![file isfile $path]} {
+        error "Core plugin path is not a file: $path"
+    }
+    if {[file size $path] > 65536} {
+        error "Core plugin file exceeds 65536 bytes: $path"
+    }
+    set channel [open $path rb]
+    try {set bytes [read $channel]} finally {close $channel}
+    if {[catch {encoding convertfrom utf-8 $bytes} content]} {
+        error "Core plugin file is not valid UTF-8: $path"
+    }
+    set names {}
+    set lineNumber 0
+    foreach line [split $content "\n"] {
+        incr lineNumber
+        set name [string trim [string trimright $line "\r"]]
+        if {$name eq "" || [string index $name 0] eq "#"} {continue}
+        if {![regexp {^[A-Za-z0-9_]+$} $name]} {
+            error "Invalid core plugin name at $path:$lineNumber: $name"
+        }
+        if {$name ni $names} {lappend names $name}
+    }
+    return $names
+}
+
+proc ::loadCorePlugins {scriptDir pluginDirectories} {
+    set names [::readCorePluginFile \
+        [file join $scriptDir conf core-plugins.txt] true]
+    foreach directory [lrange $pluginDirectories 1 end] {
+        foreach name [::readCorePluginFile \
+                [file join $directory core-plugins.txt]] {
+            if {$name ni $names} {lappend names $name}
+        }
+    }
+    return $names
+}
+
+proc ::buildCommandPolicies {config} {
+    set policies [dict create]
+    foreach rawName [split [$config get \
+            CommandExecution.allowed_executables ""] ,] {
+        set name [string trim $rawName]
+        if {$name eq ""} {
+            continue
+        }
+        if {![regexp {^[A-Za-z0-9_.+-]+$} $name]} {
+            error "Invalid allowed executable name: $name"
+        }
+        if {[dict exists $policies $name]} {
+            continue
+        }
+        set executable [$config get CommandExecution.$name.executable \
+            [$config get Executables.$name $name]]
+        set prefixes [$config get \
+            CommandExecution.$name.allowed_prefixes "*"]
+        if {[string trim $executable] eq ""} {
+            error "CommandExecution.$name.executable must not be empty"
+        }
+        if {[string trim $prefixes] ne "*"
+                && [catch {llength $prefixes}]} {
+            error "CommandExecution.$name.allowed_prefixes must be a Tcl list or *"
+        }
+        dict set policies $name [dict create \
+            executable $executable allowed_prefixes $prefixes]
+    }
+    return $policies
 }
 
 proc ::resolveWorkspaceRoot {scriptDir configuredRoot} {
@@ -291,7 +366,7 @@ proc ::requestPluginApproval {inputChannel outputChannel name arguments} {
         set ::approveAllWritesForSession 0
     }
     if {$::approveAllWritesForSession
-            && $name ni {run_tcl_file run_project_tests}} {
+            && $name ni {run_tcl_file run_project_tests exec_command}} {
         return 1
     }
     set target ""
@@ -300,7 +375,9 @@ proc ::requestPluginApproval {inputChannel outputChannel name arguments} {
     } elseif {[dict exists $arguments original]} {
         set target " ([dict get $arguments original])"
     }
-    if {$name in {run_tcl_file run_project_tests}} {
+    if {$name eq "exec_command"} {
+        set prompt "Execute external command?\nExecutable: [dict get $arguments resolved_executable]\nArguments: [dict get $arguments arguments]\nWorking directory: [dict get $arguments resolved_working_directory]\nTimeout: [dict get $arguments timeout_ms] ms\nNo OS sandbox is active; the command has your account permissions. \[y/N\] "
+    } elseif {$name in {run_tcl_file run_project_tests}} {
         set action [expr {$name eq "run_tcl_file"
             ? "Tcl file$target"
             : "configured project tests"}]
@@ -315,7 +392,7 @@ proc ::requestPluginApproval {inputChannel outputChannel name arguments} {
         return 0
     }
     set answer [string tolower [string trim $answer]]
-    if {$name ni {run_tcl_file run_project_tests}
+    if {$name ni {run_tcl_file run_project_tests exec_command}
             && $answer in {a all}} {
         set ::approveAllWritesForSession 1
         return 1
@@ -368,7 +445,7 @@ proc ::readInteractiveLine {inputChannel outputChannel prompt} {
 
 proc ::runInteractive {
     agent pluginRegistry skillRegistry historyStore logPath \
-    inputChannel outputChannel errorChannel
+    inputChannel outputChannel errorChannel {changeTracker ""}
 } {
     ::printInteractiveBanner $outputChannel
 
@@ -500,8 +577,14 @@ proc ::runInteractive {
                     continue
                 }
                 ::printConversationSeparator $outputChannel
+                set changeSnapshot ""
+                if {$changeTracker ne ""} {
+                    set changeSnapshot [$changeTracker snapshot]
+                }
                 if {[catch {$agent run $line} response]} {
                     puts $errorChannel [::styleTerminalText $errorChannel "Error: $response" {fg red bold 1}]
+                    ::reportWorkspaceChanges $changeTracker $changeSnapshot \
+                        $outputChannel
                     if {$historyStore ne "" && [catch { $historyStore saveState [$agent getHistoryState] } historyError]} {
                         puts $errorChannel [::styleTerminalText $errorChannel "History error: $historyError" {fg red}]
                     }
@@ -512,11 +595,23 @@ proc ::runInteractive {
                 } else {
                     puts $outputChannel [::styleTerminalText $outputChannel $response {fg 117}]
                 }
+                ::reportWorkspaceChanges $changeTracker $changeSnapshot \
+                    $outputChannel
                 if {$historyStore ne "" && [catch { $historyStore saveState [$agent getHistoryState] } historyError]} {
                     puts $errorChannel [::styleTerminalText $errorChannel "History error: $historyError" {fg red}]
                 }
             }
         }
+    }
+}
+
+proc ::reportWorkspaceChanges {tracker before outputChannel} {
+    if {$tracker eq ""} {return}
+    set changes [$tracker compare $before [$tracker snapshot]]
+    set report [$tracker format $changes]
+    if {$report ne ""} {
+        puts $outputChannel [::styleTerminalText $outputChannel \
+            "Files changed:\n$report" {fg green}]
     }
 }
 
@@ -536,8 +631,11 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
     set skillRegistry ""
     set instructionRegistry ""
     set processRunner ""
+    set commandRunner ""
+    set commandExecutor ""
     set pluginWorker ""
     set historyStore ""
+    set changeTracker ""
     set logPath ""
     set ownsClient [expr {$clientObject eq ""}]
     set productionLogging [expr {$ownsClient && $outChannel eq "stdout" && $errChannel eq "stderr" }]
@@ -560,6 +658,16 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
         $globalLog setLogLevel [$config get Logging.level info]
 
         set workspaceRoot [::resolveWorkspaceRoot $scriptDir [$config get Workspace.root .]]
+        set changeTrackingEnabled [$config get ChangeTracking.enabled true]
+        if {![string is boolean -strict $changeTrackingEnabled]} {
+            error "ChangeTracking.enabled must be boolean"
+        }
+        if {$changeTrackingEnabled} {
+            set excluded [::parsePluginNames [$config get \
+                ChangeTracking.excluded_directories ".git,.hg,.svn,.oodz"]]
+            set changeTracker [tWorkspaceChangeTracker new $workspaceRoot \
+                $excluded [$config get ChangeTracking.max_hash_bytes 4194304]]
+        }
         set workspaceInstructions [::loadWorkspaceInstructions $workspaceRoot [$config get Workspace.instructions ""] [$config get Workspace.instructions_max_file_bytes 16384]]
         set referenceRoots [dict create]
         set oodzRoot [::resolveOptionalReferenceRoot $scriptDir [$config get OODZ.root ""] OODZ.root]
@@ -591,14 +699,40 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
                 $processRunner configureProjectTests [$config get Runner.project_tests_executable ""] [$config get Runner.project_tests_arguments ""] [$config get Runner.project_tests_timeout_ms 60000]
             }
         }
+        set commandExecutionEnabled [$config get \
+            CommandExecution.enabled false]
+        if {![string is boolean -strict $commandExecutionEnabled]} {
+            error "CommandExecution.enabled must be boolean"
+        }
+        if {$commandExecutionEnabled} {
+            set commandMode [string tolower [string trim \
+                [$config get CommandExecution.mode allowlist]]]
+            set commandApproval [string tolower [string trim \
+                [$config get CommandExecution.approval always]]]
+            if {$commandApproval ne "always"} {
+                error "CommandExecution.approval currently supports only: always"
+            }
+            set commandTimeout [$config get \
+                CommandExecution.timeout_ms 60000]
+            set commandMaxTimeout [$config get \
+                CommandExecution.max_timeout_ms 600000]
+            set commandMaxOutput [$config get \
+                CommandExecution.max_output_chars 1048576]
+            set commandRunner [tProcessRunner new $workspaceRoot \
+                [$config get Runner.tclsh tclsh9.0] \
+                $commandTimeout $commandMaxOutput]
+            set commandExecutor [tCommandExecutor new $workspaceRoot \
+                $commandRunner $commandMode \
+                [::buildCommandPolicies $config] \
+                $commandTimeout $commandMaxTimeout $commandMaxOutput]
+        }
         set pluginLazyLoading [$config get Plugins.lazy_loading true]
         if {![string is boolean -strict $pluginLazyLoading]} {
             error "Plugins.lazy_loading must be boolean"
         }
-        set pluginCore [::parsePluginNames [$config get Plugins.core \
-            "read_file,list_files,search_files,file_info,system_info,apply_patch,write_file"]]
         set pluginDirectories [::resolvePluginDirectories $scriptDir \
             [$config get Plugins.directories ""]]
+        set pluginCore [::loadCorePlugins $scriptDir $pluginDirectories]
         set workerEnabled [$config get Plugins.worker_thread true]
         if {![string is boolean -strict $workerEnabled]} {
             error "Plugins.worker_thread must be boolean"
@@ -628,10 +762,10 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
         if {"modelInfo" in [info object methods $aiEngine -all]} {
             set modelInfoCallback [list $aiEngine modelInfo]
         }
-        set pluginRegistry [tPluginRegistry new $workspaceRoot $pluginDirectories [list ::requestPluginApproval $inChannel $errChannel] [$config get Plugins.timeout_ms 1000] [$config get Plugins.max_output_chars 65536] $referenceRoots $skillRegistry $instructionRegistry $processRunner $pluginLazyLoading $pluginCore "" $pluginWorker $modelInfoCallback]
+        set pluginRegistry [tPluginRegistry new $workspaceRoot $pluginDirectories [list ::requestPluginApproval $inChannel $errChannel] [$config get Plugins.timeout_ms 1000] [$config get Plugins.max_output_chars 65536] $referenceRoots $skillRegistry $instructionRegistry $processRunner $pluginLazyLoading $pluginCore "" $pluginWorker $modelInfoCallback $commandExecutor]
         set systemRole [::buildAgentSystemRole $config $workspaceInstructions [$skillRegistry summaries] [$instructionRegistry enabled] $runnerEnabled $pluginLazyLoading]
         set systemRole [::addModelIdentityToSystemRole $systemRole $aiEngine]
-        set codingAgent [tAgent new [$config get Agent.name] $systemRole $aiEngine $pluginRegistry [$config get Agent.max_iterations 16] [expr {$interactive ? [list ::printStreamChunk $outChannel] : ""}] [$config get Agent.max_history_messages 40] [$config get Agent.summarize_history false]]
+        set codingAgent [tAgent new [$config get Agent.name] $systemRole $aiEngine $pluginRegistry [$config get Agent.max_iterations 16] [expr {$interactive ? [list ::printStreamChunk $outChannel] : ""}] [$config get Agent.max_history_messages 200] [$config get Agent.summarize_history true] [$config get Agent.max_history_chars 120000]]
 
         if {$interactive} {
             set readlineHistoryPath ""
@@ -659,7 +793,7 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
                 $codingAgent replaceHistoryState [$historyStore loadState]
             }
             try {
-                return [::runInteractive $codingAgent $pluginRegistry $skillRegistry $historyStore $logPath $inChannel $outChannel $errChannel]
+                return [::runInteractive $codingAgent $pluginRegistry $skillRegistry $historyStore $logPath $inChannel $outChannel $errChannel $changeTracker]
             } finally {
                 if {$readlineHistoryPath ne ""} {
                     catch {::tclreadline::readline write $readlineHistoryPath}
@@ -685,8 +819,9 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
                 && [info object isa object $aiEngine]} {
             $aiEngine destroy
         }
-        foreach object [list $historyStore $pluginRegistry $pluginWorker \
-                $instructionRegistry $skillRegistry $processRunner \
+        foreach object [list $historyStore $changeTracker $pluginRegistry $pluginWorker \
+                $commandExecutor $commandRunner $instructionRegistry \
+                $skillRegistry $processRunner \
                 $backend $config] {
             if {$object ne "" && [info object isa object $object]} {
                 $object destroy

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Browse, clone, and test the OODZ Agent source repository.">
+  <title>Source · OODZ Agent</title>
+  <link href="src/pico/pico.min.css" rel="stylesheet"><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top docs-navbar"><div class="container">
+    <a class="navbar-brand fw-bold" href="index.html"><span class="brand-mark">O</span> OODZ Agent</a>
+    <div class="collapse navbar-collapse" id="docsNav"><div class="navbar-nav ms-auto"><a class="nav-link" href="index.html">Overview</a><a class="nav-link" href="getting-started.html">Getting started</a><a class="nav-link" href="architecture.html">Architecture</a><a class="nav-link" href="plugins.html">Plugins</a><a class="nav-link" href="oodz-framework.html">OODZ context</a><a class="nav-link" href="operations.html">Operations</a><a class="nav-link" href="download.html">Download</a><a class="nav-link active" href="source.html">Source</a></div></div>
+  </div></nav>
+
+  <main class="container py-5">
+    <div class="section-heading"><span>Public repository</span><h1 class="display-4">Source code</h1><p class="lead text-secondary">OODZ Agent is developed in a public Fossil repository hosted at code.cloudz.cv.</p></div>
+    <div class="docs-shell">
+      <aside class="docs-sidebar"><nav class="nav flex-column"><a class="nav-link" href="#browse">Browse online</a><a class="nav-link" href="#clone">Clone with Fossil</a><a class="nav-link" href="#verify">Verify a checkout</a><a class="nav-link" href="#workflow">Development workflow</a></nav></aside>
+      <article class="docs-content">
+        <section id="browse">
+          <h2>Browse online</h2>
+          <div class="row">
+            <article class="card"><div class="card-body"><h3>Repository home</h3><p>Project information and the current checkout documentation.</p><a href="https://code.cloudz.cv/oodz_agent/home">Open repository →</a></div></article>
+            <article class="card"><div class="card-body"><h3>Source tree</h3><p>Inspect files and directories in the current trunk.</p><a href="https://code.cloudz.cv/oodz_agent/tree">Browse files →</a></div></article>
+            <article class="card"><div class="card-body"><h3>Timeline</h3><p>Review check-ins and the project's development history.</p><a href="https://code.cloudz.cv/oodz_agent/timeline">View timeline →</a></div></article>
+            <article class="card"><div class="card-body"><h3>Tags</h3><p>Find named releases and other tagged repository states.</p><a href="https://code.cloudz.cv/oodz_agent/taglist">View tags →</a></div></article>
+          </div>
+        </section>
+
+        <section id="clone">
+          <h2>Clone with Fossil</h2>
+          <p>Install <a href="https://fossil-scm.org/home/uv/download.html">Fossil</a>, clone the repository database, then open it into a working directory.</p>
+          <div class="code-block"><header><span>Clone and open</span><span>shell</span></header><pre><code>fossil clone https://code.cloudz.cv/oodz_agent/ oodz_agent.fossil
+mkdir oodz_agent
+cd oodz_agent
+fossil open ../oodz_agent.fossil</code></pre></div>
+          <p>The <code>.fossil</code> file contains the repository history. The <code>oodz_agent</code> directory is your editable checkout.</p>
+        </section>
+
+        <section id="verify">
+          <h2>Verify a checkout</h2>
+          <div class="code-block"><header><span>Offline tests</span><span>shell</span></header><pre><code>tclsh9.0 tests/all.tcl</code></pre></div>
+          <p>The test suite exercises the agent loop, providers, plugins, process execution, persistence, GUI helpers, and safety limits without requiring a live model API key.</p>
+        </section>
+
+        <section id="workflow">
+          <h2>Development workflow</h2>
+          <div class="code-block"><header><span>Common Fossil commands</span><span>shell</span></header><pre><code>fossil status
+fossil diff
+fossil update
+fossil timeline -n 20</code></pre></div>
+          <p>Read the repository documentation and run the complete test suite before committing changes. If Fossil is new to you, its official <a href="https://fossil-scm.org/home/doc/trunk/www/quickstart.wiki">quick start guide</a> explains checkouts, updates, and commits.</p>
+          <p>Need an archive instead of repository history? Use the <a href="download.html">Download page</a>.</p>
+        </section>
+      </article>
+    </div>
+  </main>
+  <footer class="docs-footer"><div class="container d-flex justify-content-between"><a href="download.html">← Download</a><a href="index.html">Back to overview ↑</a></div></footer>
+</body></html>

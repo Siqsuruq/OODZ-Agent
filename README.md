@@ -66,15 +66,17 @@ retry_delay_ms = 250
 
 [Agent]
 name = CoderBot
-role = You are an expert Tcl programmer who writes short, clean code.
+role = You are a professional software engineering agent. Follow the user's requirements precisely, inspect relevant context, use available tools when appropriate, and produce focused, verified changes.
 max_iterations = 16
+max_history_messages = 200
+max_history_chars = 120000
+summarize_history = true
 
 [Workspace]
 root = .
 
 [Plugins]
 lazy_loading = true
-core = read_file,list_files,search_files,file_info,system_info,apply_patch,write_file
 worker_thread = true
 timeout_ms = 1000
 max_output_chars = 65536
@@ -88,6 +90,23 @@ project_tests_enabled = false
 project_tests_executable = tclsh9.0
 project_tests_arguments = tests/all.tcl
 project_tests_timeout_ms = 60000
+
+[CommandExecution]
+enabled = false
+mode = allowlist
+allowed_executables = ffmpeg,ffprobe,rg
+approval = always
+timeout_ms = 60000
+max_timeout_ms = 600000
+max_output_chars = 1048576
+
+[CommandExecution.ffmpeg]
+executable = ffmpeg
+allowed_prefixes = *
+
+[CommandExecution.rg]
+executable = rg
+allowed_prefixes = {-n} {--files} {--version}
 
 [Executables]
 fossil = fossil
@@ -125,12 +144,20 @@ Configuration fields:
 - `Agent.name`: Name used in agent log messages.
 - `Agent.role`: System instruction included before the conversation.
 - `Agent.max_iterations`: Maximum DeepSeek/tool cycles allowed for one task.
-- `Agent.max_history_messages`: Maximum prior messages sent with a request.
-  Complete tool-call turns are retained even when one turn exceeds the limit.
-- `Agent.summarize_history`: Reserved switch for automatic history summaries;
-  currently defaults to `false` while generation remains disabled.
+- `Agent.max_history_messages`: Safety ceiling for prior message objects sent
+  with a request. Complete tool-call turns are never split.
+- `Agent.max_history_chars`: Approximate character budget for prior messages.
+  This prevents large tool results from consuming an unbounded model context.
+- `Agent.summarize_history`: When true, compact excluded complete turns into a
+  persistent context summary containing prior requests, answers, and tool names.
 - `Agent.history_file`: JSON conversation history used by interactive mode,
   resolved relative to the project directory unless absolute.
+- `ChangeTracking.enabled`: Show files added, modified, or deleted after every
+  interactive agent turn, including turns that end with an error.
+- `ChangeTracking.excluded_directories`: Comma-separated directory names omitted
+  from snapshots. Runtime and VCS metadata are excluded by default.
+- `ChangeTracking.max_hash_bytes`: Maximum file size checksummed for exact
+  content-change detection. Larger files use size, timestamp, and permissions.
 - `Plugins.timeout_ms`: Tcl execution deadline applied to each plugin call. The
   default is 10 seconds so approved network-backed plugins can complete.
 - `Plugins.max_output_chars`: Maximum tool-result size returned to DeepSeek.
@@ -139,13 +166,25 @@ Configuration fields:
   containing `main.tcl`. The built-in `plugins/` directory is always loaded.
   An optional private `[settings]` manifest section is passed only to the Tcl
   handler and is excluded from model-visible tool definitions.
-- `Plugins.lazy_loading`: When true, expose only `Plugins.core`, special
-  framework tools, and `search_plugins` to the model initially. A
+- `Plugins.lazy_loading`: When true, expose only tools named by merged
+  `core-plugins.txt` files, special framework tools, and `search_plugins` to the model initially. A
   `search_plugins` call searches plugin names and manifest descriptions, then
   activates matching definitions for the following model response. Direct CLI
   `/tool` calls can still invoke any installed plugin.
-- `Plugins.core`: Comma-separated plugin names that remain model-visible while
-  lazy loading is enabled. Startup fails if a configured name is not installed.
+- `conf/core-plugins.txt`: Required public baseline of plugin names that remain
+  model-visible while lazy loading is enabled. Each configured personal plugin
+  root may add an optional `core-plugins.txt`; entries are merged without
+  requiring private files to repeat the public baseline. Files use one plugin
+  name per line, with blank lines and lines beginning with `#` ignored. Startup
+  fails if a merged name is not installed.
+
+`read_file` accepts optional inclusive, one-based line ranges. Ranged output is
+numbered and limited to 200 lines, while omitting both fields preserves the
+original exact full-file response:
+
+```json
+{"path":"pages/res/modules/clinic/treatment_plan/edit.tcl","start_line":120,"end_line":220}
+```
 - `Plugins.worker_thread`: Run validated and approved plugin handlers serially
   in one persistent Tcl worker thread. The main thread retains metadata,
   activation, validation, approvals, model coordination, and GUI state. This
@@ -240,9 +279,15 @@ that one workflow. This avoids sending every complete skill on every request.
 
 ```text
 skills/
-  create-oodz-class/
+  debug-failing-test/
     SKILL.md
 ```
+
+The included `debug-failing-test` skill is a small, language-independent example
+for diagnosing and correcting a failing automated test. The built-in directory
+is for workflows appropriate to every installation. Put application-specific
+skills in a personal directory such as `.oodz/skills` and add that path to
+`Skills.directories`.
 
 ### Hierarchical project instructions
 
@@ -323,6 +368,43 @@ Run it directly in interactive mode with:
 
 ```text
 /tool run_project_tests {}
+```
+
+### Generic structured command execution
+
+`CommandExecution.enabled = true` exposes the special core tool
+`exec_command`. It launches an executable with a JSON array of direct arguments;
+it never accepts a shell command string. Every invocation requires approval,
+and the approval view shows the resolved executable, arguments, workspace
+directory, and timeout.
+
+`mode = allowlist` accepts only logical names from `allowed_executables`.
+Each `[CommandExecution.NAME]` section selects the trusted executable and its
+allowed argument prefixes. `allowed_prefixes = *` permits any argument list for
+that executable. Otherwise, the value is an outer Tcl list of prefixes:
+
+```ini
+[CommandExecution.git]
+executable = git
+allowed_prefixes = {status} {diff} {log} {show}
+```
+
+`mode = unrestricted` accepts any executable resolvable through `PATH` or an
+absolute executable path. This is explicit full process-execution authority as
+the agent user's account. Neither mode provides filesystem, network, account,
+container, or operating-system isolation. Prefix rules are convenience policy,
+not a security sandbox; many programs can indirectly execute code or access
+resources through their ordinary arguments.
+
+Working directories must already exist inside the configured workspace.
+Requested timeouts cannot exceed `max_timeout_ms`. Tcl pipeline, redirection,
+and background-control arguments are rejected because the runner owns output
+capture. Version 1 supports only `approval = always`.
+
+Example model call:
+
+```json
+{"executable":"ffmpeg","arguments":["-i","input.mp3","output.wav"],"working_directory":"media","timeout_ms":300000}
 ```
 
 ### Scoped HTTP GET
@@ -649,9 +731,13 @@ wish gui.tcl
 
 The desktop interface provides a conversation view, multiline input,
 streaming responses, persistent history, New/Send controls, and write approval
-dialogs. Assistant Markdown is styled while it streams without reparsing the
-entire conversation. Its Tools dialog lists every available tool, displays its description
-and JSON argument schema, and can invoke it locally without calling the LLM.
+dialogs. Its menu can edit the configured workspace instruction file, open the
+Tools and Skills dialogs, and display the application version. Saved workspace
+instructions become active on the next request without restarting the agent or
+clearing its conversation. Assistant Markdown is styled while it streams
+without reparsing the entire conversation. Its Tools dialog lists every
+available tool, displays its description and JSON argument schema, and can
+invoke it locally without calling the LLM.
 Press `Ctrl+Enter` to send a prompt or run a selected tool. It uses the same
 configuration, workspace, plugins, and OODZ reference as the terminal interface.
 
@@ -766,7 +852,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 131 Passed 131 Skipped 0 Failed 0
+all.tcl: Total 148 Passed 148 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the

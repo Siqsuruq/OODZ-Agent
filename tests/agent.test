@@ -20,6 +20,23 @@ test agent-smoke-1.1 {agent returns response and records conversation} -body {
     [list [list "Test system role" [list \
         [dict create role user content "Test task"]]]]]
 
+test agent-role-1.1 {system role can be refreshed without losing history} -body {
+    set client [::FakeLLMClient new [list "first response" "second response"]]
+    set agent [::tAgent new TestAgent "Initial role" $client]
+    try {
+        $agent run "first task"
+        $agent configureSystemRole "Updated role"
+        $agent run "second task"
+        list \
+            [lindex [lindex [$client getCalls] 0] 0] \
+            [lindex [lindex [$client getCalls] 1] 0] \
+            [llength [$agent getHistory]]
+    } finally {
+        $agent destroy
+        $client destroy
+    }
+} -result [list "Initial role" "Updated role" 4]
+
 test agent-history-1.1 {second request contains the completed first turn} -body {
     set client [::FakeLLMClient new [list "first response" "second response"]]
     set agent [::tAgent new TestAgent "Test system role" $client]
@@ -77,7 +94,9 @@ test agent-history-1.3 {request context is bounded without trimming storage} -bo
         $agent destroy
         $client destroy
     }
-} -result [list [list "second" "two" "third" "three" "fourth"] 8]
+} -result [list [list \
+    "Conversation context compacted from older turns:\nUser: first\nAssistant: one" \
+    "second" "two" "third" "three" "fourth"] 8]
 
 test agent-history-1.4 {an oversized tool turn is never split} -body {
     set client [::FakeLLMClient new [list "follow-up answer"]]
@@ -98,14 +117,14 @@ test agent-history-1.4 {an oversized tool turn is never split} -body {
         set request [lindex [lindex [$client getCalls] 0] 1]
         list \
             [lmap message $request {dict get $message role}] \
-            [dict get [lindex $request 0] content] \
+            [dict get [lindex $request 1] content] \
             [llength [$agent getHistory]]
     } finally {
         $agent destroy
         $client destroy
     }
 } -result [list \
-    [list user assistant tool assistant user] \
+    [list system user assistant tool assistant user] \
     inspect \
     8]
 
@@ -191,7 +210,7 @@ test agent-loop-1.1 {agent executes a plugin and returns the final answer} -body
 } -result [list \
     "Inspection complete." \
     2 \
-    [list apply_patch copy_file delete_file edit_file file_info fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_files list_folders make_directory move_file oodz_lookup oodz_read oodz_search random_string read_file save_translation search_files system_info unzip write_file xml_validate zip] \
+    [list apply_patch copy_file create_file delete_file edit_file file_info fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_files list_folders make_directory move_file oodz_lookup oodz_read oodz_search random_string read_file save_translation search_files system_info unzip write_file xml_validate zip] \
     "I should inspect main.tcl." \
     tool \
     call_read \
@@ -278,7 +297,8 @@ test agent-loop-1.2 {agent stops at the configured iteration limit} -body {
         function [dict create name list_files arguments $arguments]]
     set response [dict create \
         role assistant content "" tool_calls [list $toolCall]]
-    set client [::StructuredFakeLLMClient new [list $response $response]]
+    set client [::StructuredFakeLLMClient new [list \
+        $response $response [dict create role assistant content continued]]]
     set agent [::tAgent new \
         TestAgent "Test system role" $client $registry 2]
 
@@ -286,10 +306,17 @@ test agent-loop-1.2 {agent stops at the configured iteration limit} -body {
         set runResult [catch {
             $agent run "Keep listing files"
         } runMessage]
+        set history [$agent getHistory]
+        set continued [$agent run "Continue the work"]
+        set continuationRequest [lindex [lindex [$client getCalls] 2] 1]
         list \
             $runResult $runMessage \
-            [llength [$client getCalls]] \
-            [$agent getHistory]
+            $continued \
+            [lmap message $history {dict get $message role}] \
+            [dict get [lindex [dict get [lindex $history 1] tool_calls] 0] \
+                function name] \
+            [dict get [lindex $history end] content] \
+            [lmap message $continuationRequest {dict get $message role}]
     } finally {
         $agent destroy
         $client destroy
@@ -297,10 +324,56 @@ test agent-loop-1.2 {agent stops at the configured iteration limit} -body {
     }
 } -result [list \
     1 "Agent exceeded maximum iterations: 2" \
-    2 [list \
-        [dict create role user content "Keep listing files"] \
-        [dict create role assistant content \
-            "The previous task ended before a final response: Agent exceeded maximum iterations: 2"]]]
+    continued [list user assistant tool assistant tool assistant] \
+    list_files \
+    "The previous task ended before a final response: Agent exceeded maximum iterations: 2" \
+    [list user assistant tool assistant tool assistant user]]
+
+test agent-history-1.6 {character budget retains complete recent turns} -body {
+    set client [::FakeLLMClient new [list done]]
+    set agent [::tAgent new \
+        TestAgent "Test system role" $client "" 8 "" 200 false 90]
+    set messages [list \
+        [dict create role user content [string repeat a 80]] \
+        [dict create role assistant content old] \
+        [dict create role user content recent] \
+        [dict create role assistant content answer]]
+    try {
+        $agent replaceHistory $messages
+        $agent run follow-up
+        set request [lindex [lindex [$client getCalls] 0] 1]
+        lmap message $request {dict get $message content}
+    } finally {
+        $agent destroy
+        $client destroy
+    }
+} -result [list recent answer follow-up]
+
+test agent-history-1.7 {compaction summary is generated and reusable} -body {
+    set client [::FakeLLMClient new [list done]]
+    set agent [::tAgent new \
+        TestAgent "Test system role" $client "" 8 "" 2 true 120000]
+    set messages [list \
+        [dict create role user content "create hotel module"] \
+        [dict create role assistant content "created initial files"] \
+        [dict create role user content "inspect tests"] \
+        [dict create role assistant content "tests inspected"]]
+    try {
+        $agent replaceHistory $messages
+        $agent run continue
+        set request [lindex [lindex [$client getCalls] 0] 1]
+        set state [$agent getHistoryState]
+        list \
+            [dict get [lindex $request 0] role] \
+            [expr {[string first "create hotel module" \
+                [dict get [lindex $request 0] content]] >= 0}] \
+            [dict get $state summarized_messages] \
+            [expr {[dict get $state summary] ne ""}]
+    } finally {
+        $agent destroy
+        $client destroy
+    }
+} -result [list system 1 2 1]
 
 
 ::finishTests

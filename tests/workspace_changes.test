@@ -1,0 +1,201 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+::oo::class create ::WorkspaceMutatingClient {
+    variable path
+    constructor {targetPath} {set path $targetPath}
+    method query {systemPrompt messages} {
+        set channel [open $path w]
+        puts -nonewline $channel generated
+        close $channel
+        return "work complete"
+    }
+}
+
+test workspace-changes-1.1 {tracker reports added modified and deleted files} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] workspace-changes-[pid]-[clock clicks]]]
+    file mkdir $root [file join $root .oodz]
+    set existing [open [file join $root existing.txt] w]
+    puts $existing {before}
+    close $existing
+    set removed [open [file join $root removed.txt] w]
+    puts -nonewline $removed {remove me}
+    close $removed
+    set tracker [tWorkspaceChangeTracker new $root [list .oodz] 1024]
+    try {
+        set before [$tracker snapshot]
+        set existing [open [file join $root existing.txt] w]
+        puts -nonewline $existing {after!}
+        close $existing
+        set added [open [file join $root added.txt] w]
+        puts -nonewline $added {new}
+        close $added
+        file delete [file join $root removed.txt]
+        set ignored [open [file join $root .oodz history.json] w]
+        puts -nonewline $ignored {runtime}
+        close $ignored
+        set changes [$tracker compare $before [$tracker snapshot]]
+        list \
+            [dict get $changes added] \
+            [dict get $changes modified] \
+            [dict get $changes deleted] \
+            [$tracker format $changes]
+    } finally {
+        $tracker destroy
+        file delete -force $root
+    }
+} -result [list \
+    [list added.txt] [list existing.txt] [list removed.txt] \
+    "+ Added: added.txt\n~ Modified: existing.txt\n- Deleted: removed.txt"]
+
+test workspace-changes-1.2 {checksum detects same-size rewrite} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] workspace-checksum-[pid]-[clock clicks]]]
+    file mkdir $root
+    set path [file join $root same.txt]
+    set channel [open $path w]
+    puts -nonewline $channel abc
+    close $channel
+    set tracker [tWorkspaceChangeTracker new $root {} 1024]
+    try {
+        set before [$tracker snapshot]
+        set originalMtime [file mtime $path]
+        set channel [open $path w]
+        puts -nonewline $channel xyz
+        close $channel
+        file mtime $path $originalMtime
+        dict get [$tracker compare $before [$tracker snapshot]] modified
+    } finally {
+        $tracker destroy
+        file delete -force $root
+    }
+} -result [list same.txt]
+
+test workspace-changes-1.3 {nested Unicode and hidden files are tracked} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] workspace-unicode-[pid]-[clock clicks]]]
+    file mkdir [file join $root {módulos}] [file join $root .hidden]
+    set tracker [tWorkspaceChangeTracker new $root {} 1024]
+    try {
+        set before [$tracker snapshot]
+        foreach relative [list [file join {módulos} {hotel-客房.tcl}] \
+                [file join .hidden settings]] {
+            set channel [open [file join $root $relative] w]
+            puts -nonewline $channel content
+            close $channel
+        }
+        dict get [$tracker compare $before [$tracker snapshot]] added
+    } finally {
+        $tracker destroy
+        file delete -force $root
+    }
+} -result [lsort [list [file join .hidden settings] \
+    [file join {módulos} {hotel-客房.tcl}]]]
+
+test workspace-changes-1.4 {excluded directories and symbolic links are ignored} \
+        -constraints {unix} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] workspace-excluded-[pid]-[clock clicks]]]
+    file mkdir $root [file join $root cache]
+    set outside [file tempfile outsidePath]
+    puts -nonewline $outside outside
+    close $outside
+    file link -symbolic [file join $root linked.txt] $outsidePath
+    set tracker [tWorkspaceChangeTracker new $root [list cache] 1024]
+    try {
+        set before [$tracker snapshot]
+        set ignored [open [file join $root cache generated.txt] w]
+        puts -nonewline $ignored ignored
+        close $ignored
+        set changes [$tracker compare $before [$tracker snapshot]]
+        list {*}[dict values $changes]
+    } finally {
+        $tracker destroy
+        file delete -force $root
+        file delete $outsidePath
+    }
+} -result [list {} {} {}]
+
+test workspace-changes-1.5 {large files fall back to metadata tracking} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] workspace-large-[pid]-[clock clicks]]]
+    file mkdir $root
+    set path [file join $root large.bin]
+    set channel [open $path wb]
+    puts -nonewline $channel [string repeat x 2048]
+    close $channel
+    set tracker [tWorkspaceChangeTracker new $root {} 16]
+    try {
+        set before [$tracker snapshot]
+        set channel [open $path ab]
+        puts -nonewline $channel y
+        close $channel
+        dict get [$tracker compare $before [$tracker snapshot]] modified
+    } finally {
+        $tracker destroy
+        file delete -force $root
+    }
+} -result [list large.bin]
+
+test workspace-changes-1.6 {terminal report prints changes and suppresses no-op turns} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] workspace-report-[pid]-[clock clicks]]]
+    file mkdir $root
+    set tracker [tWorkspaceChangeTracker new $root {} 1024]
+    set output [file tempfile outputPath]
+    try {
+        set before [$tracker snapshot]
+        ::reportWorkspaceChanges $tracker $before $output
+        set channel [open [file join $root created.txt] w]
+        puts -nonewline $channel created
+        close $channel
+        ::reportWorkspaceChanges $tracker $before $output
+        flush $output
+        seek $output 0
+        string trim [read $output]
+    } finally {
+        close $output
+        $tracker destroy
+        file delete -force $root
+        file delete $outputPath
+    }
+} -result "Files changed:\n+ Added: created.txt"
+
+test workspace-changes-1.7 {interactive agent turn automatically reports changes} -body {
+    set root [file normalize [file join \
+        [temporaryDirectory] workspace-turn-[pid]-[clock clicks]]]
+    file mkdir $root
+    set client [::WorkspaceMutatingClient new [file join $root generated.tcl]]
+    set agent [tAgent new TestAgent role $client]
+    set tracker [tWorkspaceChangeTracker new $root {} 1024]
+    set input [file tempfile inputPath]
+    set output [file tempfile outputPath]
+    set errors [file tempfile errorPath]
+    try {
+        puts $input {create the file}
+        puts $input /exit
+        flush $input
+        seek $input 0
+        ::runInteractive $agent "" "" "" "" \
+            $input $output $errors $tracker
+        flush $output
+        seek $output 0
+        set text [read $output]
+        list \
+            [expr {[string first "work complete" $text] >= 0}] \
+            [expr {[string first "+ Added: generated.tcl" $text] >= 0}]
+    } finally {
+        close $input
+        close $output
+        close $errors
+        $tracker destroy
+        $agent destroy
+        $client destroy
+        file delete -force $root
+        file delete $inputPath $outputPath $errorPath
+    }
+} -result [list 1 1]
+
+::finishTests

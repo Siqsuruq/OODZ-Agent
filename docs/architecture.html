@@ -9,7 +9,7 @@
 <body>
   <nav class="navbar navbar-expand-lg navbar-dark sticky-top docs-navbar"><div class="container">
     <a class="navbar-brand fw-bold" href="index.html"><span class="brand-mark">O</span> OODZ Agent</a>
-    <div class="collapse navbar-collapse" id="docsNav"><div class="navbar-nav ms-auto"><a class="nav-link" href="index.html">Overview</a><a class="nav-link" href="getting-started.html">Getting started</a><a class="nav-link active" href="architecture.html">Architecture</a><a class="nav-link" href="plugins.html">Plugins</a><a class="nav-link" href="oodz-framework.html">OODZ context</a><a class="nav-link" href="operations.html">Operations</a></div></div>
+    <div class="collapse navbar-collapse" id="docsNav"><div class="navbar-nav ms-auto"><a class="nav-link" href="index.html">Overview</a><a class="nav-link" href="getting-started.html">Getting started</a><a class="nav-link active" href="architecture.html">Architecture</a><a class="nav-link" href="plugins.html">Plugins</a><a class="nav-link" href="oodz-framework.html">OODZ context</a><a class="nav-link" href="operations.html">Operations</a><a class="nav-link" href="download.html">Download</a><a class="nav-link" href="source.html">Source</a></div></div>
   </div></nav>
   <main class="container py-5">
     <div class="section-heading"><span>Internals</span><h1 class="display-4">Architecture</h1><p class="lead text-secondary">Clear boundaries between terminal UI, agent reasoning, provider transport, plugins, and storage.</p></div>
@@ -25,6 +25,7 @@
           <tr><td><code>pluginRegistry.tcl</code></td><td>Plugin discovery, metadata, lazy exposure, validation, approval, and invocation routing.</td></tr>
           <tr><td><code>pluginWorker.tcl</code></td><td>Persistent Tcl worker thread, asynchronous result protocol, and event-loop-friendly compatibility calls.</td></tr>
           <tr><td><code>processRunner.tcl</code></td><td>Portable direct process execution with workspace selection, trusted commands, timeouts, output limits, cross-platform termination, and native Tcl-dict results.</td></tr>
+          <tr><td><code>commandExecutor.tcl</code></td><td>Professional structured-command policy: disabled/allowlisted/unrestricted modes, executable and prefix validation, confined working directories, timeout caps, and approval-ready command descriptions.</td></tr>
           <tr><td><code>conversationStore.tcl</code></td><td>Versioned JSON persistence with atomic writes.</td></tr>
         </tbody></table></div></section>
         <section id="agent-loop"><h2>Agent loop</h2><ol><li>Combine stored history with the new user task.</li><li>Send messages and plugin schemas to the configured provider.</li><li>Append the assistant message.</li><li>Execute requested plugins and append their results.</li><li>Repeat until final content arrives or the iteration limit is reached.</li><li>Commit and persist history only after success.</li></ol></section>

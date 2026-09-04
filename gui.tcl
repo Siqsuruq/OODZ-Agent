@@ -9,10 +9,15 @@ namespace eval ::oodzGui {
     variable skillRegistry ""
     variable instructionRegistry ""
     variable processRunner ""
+    variable commandRunner ""
+    variable commandExecutor ""
     variable pluginWorker ""
     variable config ""
     variable backend ""
     variable historyStore ""
+    variable changeTracker ""
+    variable workspaceRoot ""
+    variable instructionPath ""
     variable approveAll 0
     variable approvalResult 0
     variable busy 0
@@ -58,7 +63,7 @@ proc ::oodzGui::approvalChoice {choice} {
 proc ::oodzGui::approve {name arguments} {
     variable approveAll
     variable approvalResult
-    if {$approveAll && $name ni {run_tcl_file run_project_tests}} {
+    if {$approveAll && $name ni {run_tcl_file run_project_tests exec_command}} {
         return 1
     }
     set target ""
@@ -74,7 +79,9 @@ proc ::oodzGui::approve {name arguments} {
     wm transient .approval .
     wm minsize .approval 460 150
     wm resizable .approval 1 0
-    if {$name in {run_tcl_file run_project_tests}} {
+    if {$name eq "exec_command"} {
+        set message "Execute external command?\n\nExecutable:\n[dict get $arguments resolved_executable]\n\nArguments:\n[dict get $arguments arguments]\n\nWorking directory:\n[dict get $arguments resolved_working_directory]\n\nTimeout: [dict get $arguments timeout_ms] ms\n\nWARNING: No OS sandbox is active."
+    } elseif {$name in {run_tcl_file run_project_tests}} {
         set action [expr {$name eq "run_tcl_file"
             ? "Tcl file$target"
             : "configured project tests"}]
@@ -84,13 +91,13 @@ proc ::oodzGui::approve {name arguments} {
     }
     ttk::label .approval.message -text $message -justify left
     ttk::button .approval.yes -text "Yes" -command [list ::oodzGui::approvalChoice 1]
-    if {$name ni {run_tcl_file run_project_tests}} {
+    if {$name ni {run_tcl_file run_project_tests exec_command}} {
         ttk::button .approval.all -text "All for session" -command [list ::oodzGui::approvalChoice 2]
     }
     ttk::button .approval.no -text "Deny" -command [list ::oodzGui::approvalChoice 0]
     grid .approval.message -row 0 -column 0 -columnspan 3 -sticky nsew -padx 16 -pady {16 20}
     grid .approval.yes -row 1 -column 0 -padx {16 4} -pady {0 16} -sticky ew
-    if {$name ni {run_tcl_file run_project_tests}} {
+    if {$name ni {run_tcl_file run_project_tests exec_command}} {
         grid .approval.all -row 1 -column 1 -padx 4 -pady {0 16} -sticky ew
     }
     grid .approval.no -row 1 -column 2 -padx {4 16} -pady {0 16} -sticky ew
@@ -137,6 +144,7 @@ proc ::oodzGui::renderHistory {} {
 proc ::oodzGui::send {} {
     variable agent
     variable busy
+    variable changeTracker
     if {$busy} {
         return
     }
@@ -154,6 +162,10 @@ proc ::oodzGui::send {} {
     .conversation configure -state disabled
     ::oodzMarkdownTk::begin .conversation assistant
     update idletasks
+    set changeSnapshot ""
+    if {$changeTracker ne ""} {
+        set changeSnapshot [$changeTracker snapshot]
+    }
     if {[catch {$agent run $task} result]} {
         ::oodzMarkdownTk::finish .conversation
         ::oodzGui::appendMessage Error "Error: $result"
@@ -163,6 +175,14 @@ proc ::oodzGui::send {} {
         .conversation insert end "\n"
         .conversation configure -state disabled
         .conversation see end
+    }
+    if {$changeTracker ne ""} {
+        set changes [$changeTracker compare \
+            $changeSnapshot [$changeTracker snapshot]]
+        set report [$changeTracker format $changes]
+        if {$report ne ""} {
+            ::oodzGui::appendMessage Changes $report
+        }
     }
     if {[catch {::oodzGui::saveHistory} historyError]} {
         ::oodzGui::appendMessage Error "History error: $historyError"
@@ -210,6 +230,136 @@ proc ::oodzGui::showSkills {} {
     grid .skills.scroll -row 0 -column 1 -sticky ns
     grid rowconfigure .skills 0 -weight 1
     grid columnconfigure .skills 0 -weight 1
+}
+
+proc ::oodzGui::refreshSystemRole {} {
+    variable agent
+    variable client
+    variable config
+    variable instructionRegistry
+    variable processRunner
+    variable skillRegistry
+    variable workspaceRoot
+
+    set instructions [::loadWorkspaceInstructions $workspaceRoot \
+        [$config get Workspace.instructions ""] \
+        [$config get Workspace.instructions_max_file_bytes 16384]]
+    set pluginLazyLoading [$config get Plugins.lazy_loading true]
+    set role [::buildAgentSystemRole $config $instructions \
+        [$skillRegistry summaries] [$instructionRegistry enabled] \
+        [expr {$processRunner ne ""}] $pluginLazyLoading]
+    $agent configureSystemRole \
+        [::addModelIdentityToSystemRole $role $client]
+}
+
+proc ::oodzGui::saveWorkspaceInstructions {} {
+    variable config
+    variable instructionPath
+
+    set content [.instructions.editor get 1.0 end-1c]
+    set bytes [encoding convertto utf-8 $content]
+    set maximum [$config get Workspace.instructions_max_file_bytes 16384]
+    if {[string length $bytes] > $maximum} {
+        tk_messageBox -parent .instructions -icon error -type ok \
+            -title "Instructions too large" \
+            -message "Workspace instructions exceed the $maximum-byte limit."
+        return
+    }
+    if {[catch {
+        set channel [open $instructionPath wb]
+        try {
+            puts -nonewline $channel $bytes
+        } finally {
+            close $channel
+        }
+        ::oodzGui::refreshSystemRole
+    } message]} {
+        tk_messageBox -parent .instructions -icon error -type ok \
+            -title "Could not save instructions" -message $message
+        return
+    }
+    .instructions.status configure -text "Saved. Active for the next request."
+}
+
+proc ::oodzGui::editWorkspaceInstructions {} {
+    variable config
+    variable instructionPath
+    variable workspaceRoot
+
+    set configuredPath [string trim [$config get Workspace.instructions ""]]
+    if {$configuredPath eq ""} {
+        tk_messageBox -parent . -icon info -type ok \
+            -title "Workspace instructions disabled" \
+            -message "Set Workspace.instructions in conf.ini before using the editor."
+        return
+    }
+    if {[file pathtype $configuredPath] ne "relative"} {
+        tk_messageBox -parent . -icon error -type ok \
+            -title "Invalid instruction path" \
+            -message "Workspace.instructions must be relative to the workspace."
+        return
+    }
+    set instructionPath [file normalize [file join $workspaceRoot $configuredPath]]
+    if {![::PluginSupport::isWithin $instructionPath $workspaceRoot]} {
+        tk_messageBox -parent . -icon error -type ok \
+            -title "Invalid instruction path" \
+            -message "The instruction file must remain inside the workspace."
+        return
+    }
+    set content ""
+    if {[file isfile $instructionPath]} {
+        if {[catch {
+            set content [::loadWorkspaceInstructions $workspaceRoot \
+                $configuredPath \
+                [$config get Workspace.instructions_max_file_bytes 16384]]
+        } message]} {
+            tk_messageBox -parent . -icon error -type ok \
+                -title "Could not read instructions" -message $message
+            return
+        }
+    }
+
+    catch {destroy .instructions}
+    toplevel .instructions
+    wm title .instructions "Workspace Instructions"
+    wm transient .instructions .
+    wm minsize .instructions 640 440
+    ttk::label .instructions.path -text $instructionPath -anchor w
+    text .instructions.editor -wrap word -undo true -padx 10 -pady 10
+    ttk::scrollbar .instructions.scroll -orient vertical \
+        -command [list .instructions.editor yview]
+    .instructions.editor configure \
+        -yscrollcommand [list .instructions.scroll set]
+    .instructions.editor insert 1.0 $content
+    ttk::label .instructions.status \
+        -text "These instructions are added to every model request."
+    ttk::button .instructions.save -text "Save" \
+        -command ::oodzGui::saveWorkspaceInstructions
+    ttk::button .instructions.close -text "Close" \
+        -command [list destroy .instructions]
+    grid .instructions.path -row 0 -column 0 -columnspan 2 \
+        -sticky ew -padx 12 -pady {12 8}
+    grid .instructions.editor -row 1 -column 0 -sticky nsew -padx {12 0}
+    grid .instructions.scroll -row 1 -column 1 -sticky ns -padx {0 12}
+    grid .instructions.status -row 2 -column 0 -columnspan 2 \
+        -sticky w -padx 12 -pady 8
+    grid .instructions.save -row 3 -column 0 -sticky w \
+        -padx 12 -pady {0 12}
+    grid .instructions.close -row 3 -column 1 -sticky e \
+        -padx 12 -pady {0 12}
+    grid rowconfigure .instructions 1 -weight 1
+    grid columnconfigure .instructions 0 -weight 1
+    bind .instructions.editor <Control-s> {
+        ::oodzGui::saveWorkspaceInstructions
+        break
+    }
+    focus .instructions.editor
+}
+
+proc ::oodzGui::showAbout {} {
+    tk_messageBox -parent . -icon info -type ok -title "About OODZ Agent" \
+        -message "OODZ Agent $::version" \
+        -detail "A professional, extensible software engineering agent built with Tcl 9."
 }
 
 proc ::oodzGui::selectTool {} {
@@ -337,8 +487,8 @@ proc ::oodzGui::showTools {} {
 
 proc ::oodzGui::close {} {
     foreach name {
-        agent historyStore registry pluginWorker instructionRegistry \
-        skillRegistry processRunner client backend config
+        agent historyStore changeTracker registry pluginWorker commandExecutor commandRunner \
+        instructionRegistry skillRegistry processRunner client backend config
     } {
         variable $name
         set object [set $name]
@@ -450,6 +600,25 @@ proc ::oodzGui::buildWidgets {} {
     variable darkTheme
     wm title . "OODZ Agent"
     wm minsize . 700 520
+    menu .menuBar
+    . configure -menu .menuBar
+    menu .menuBar.file -tearoff 0
+    .menuBar add cascade -label File -menu .menuBar.file
+    .menuBar.file add command -label "Edit Workspace Instructions…" \
+        -command ::oodzGui::editWorkspaceInstructions
+    .menuBar.file add separator
+    .menuBar.file add command -label Exit -command ::oodzGui::close
+    menu .menuBar.view -tearoff 0
+    .menuBar add cascade -label View -menu .menuBar.view
+    .menuBar.view add command -label Tools -command ::oodzGui::showTools
+    .menuBar.view add command -label Skills -command ::oodzGui::showSkills
+    menu .menuBar.help -tearoff 0
+    .menuBar add cascade -label Help -menu .menuBar.help
+    .menuBar.help add command -label "Available Skills" \
+        -command ::oodzGui::showSkills
+    .menuBar.help add separator
+    .menuBar.help add command -label "About OODZ Agent" \
+        -command ::oodzGui::showAbout
     ttk::frame .main -padding 12
     text .conversation -wrap word -state disabled -padx 12 -pady 12 -background #151821 -foreground #d8dee9 -insertbackground white -selectbackground #5294e2 -selectforeground white -relief flat
     ttk::scrollbar .scroll -orient vertical -command [list .conversation yview]
@@ -462,6 +631,8 @@ proc ::oodzGui::buildWidgets {} {
     .conversation tag configure AssistantLabel -foreground #87d7ff
     .conversation tag configure Error -foreground #ff6b6b
     .conversation tag configure ErrorLabel -foreground #ff6b6b
+    .conversation tag configure Changes -foreground #a9dc52
+    .conversation tag configure ChangesLabel -foreground #a9dc52
     ::oodzMarkdownTk::attach .conversation
     text .input -height 5 -wrap word -padx 8 -pady 8 -selectbackground #5294e2 -selectforeground white
     ttk::frame .actions
@@ -513,11 +684,15 @@ proc ::oodzGui::start {} {
     variable skillRegistry
     variable instructionRegistry
     variable processRunner
+    variable commandRunner
+    variable commandExecutor
     variable pluginWorker
     variable config
     variable backend
     variable historyStore
-    
+    variable changeTracker
+    variable workspaceRoot
+
     set config [::Config new]
     set backend [::Config::Backend::Ini new]
     $config useBackend $backend [file join $scriptDir conf conf.ini]
@@ -532,6 +707,16 @@ proc ::oodzGui::start {} {
     ::tLogger setAppenderFactory [list ::FileAppender new $logPath]
     [::tLogger getLogger "Global"] setLogLevel [$config get Logging.level info]
     set workspaceRoot [::resolveWorkspaceRoot $scriptDir [$config get Workspace.root .]]
+    set changeTrackingEnabled [$config get ChangeTracking.enabled true]
+    if {![string is boolean -strict $changeTrackingEnabled]} {
+        error "ChangeTracking.enabled must be boolean"
+    }
+    if {$changeTrackingEnabled} {
+        set excluded [::parsePluginNames [$config get \
+            ChangeTracking.excluded_directories ".git,.hg,.svn,.oodz"]]
+        set changeTracker [tWorkspaceChangeTracker new $workspaceRoot $excluded \
+            [$config get ChangeTracking.max_hash_bytes 4194304]]
+    }
     set instructions [::loadWorkspaceInstructions $workspaceRoot [$config get Workspace.instructions ""] [$config get Workspace.instructions_max_file_bytes 16384]]
     set referenceRoots [dict create]
     set oodzRoot [::resolveOptionalReferenceRoot $scriptDir [$config get OODZ.root ""] OODZ.root]
@@ -556,12 +741,36 @@ proc ::oodzGui::start {} {
             $processRunner configureProjectTests [$config get Runner.project_tests_executable ""] [$config get Runner.project_tests_arguments ""] [$config get Runner.project_tests_timeout_ms 60000]
         }
     }
+    set commandExecutionEnabled [$config get CommandExecution.enabled false]
+    if {![string is boolean -strict $commandExecutionEnabled]} {
+        error "CommandExecution.enabled must be boolean"
+    }
+    if {$commandExecutionEnabled} {
+        set commandMode [string tolower [string trim \
+            [$config get CommandExecution.mode allowlist]]]
+        set commandApproval [string tolower [string trim \
+            [$config get CommandExecution.approval always]]]
+        if {$commandApproval ne "always"} {
+            error "CommandExecution.approval currently supports only: always"
+        }
+        set commandTimeout [$config get CommandExecution.timeout_ms 60000]
+        set commandMaxTimeout [$config get \
+            CommandExecution.max_timeout_ms 600000]
+        set commandMaxOutput [$config get \
+            CommandExecution.max_output_chars 1048576]
+        set commandRunner [tProcessRunner new $workspaceRoot \
+            [$config get Runner.tclsh tclsh9.0] \
+            $commandTimeout $commandMaxOutput]
+        set commandExecutor [tCommandExecutor new $workspaceRoot \
+            $commandRunner $commandMode [::buildCommandPolicies $config] \
+            $commandTimeout $commandMaxTimeout $commandMaxOutput]
+    }
     set pluginLazyLoading [$config get Plugins.lazy_loading true]
     if {![string is boolean -strict $pluginLazyLoading]} {
         error "Plugins.lazy_loading must be boolean"
     }
-    set pluginCore [::parsePluginNames [$config get Plugins.core "read_file,list_files,search_files,file_info,system_info,apply_patch,write_file"]]
     set pluginDirectories [::resolvePluginDirectories $scriptDir [$config get Plugins.directories ""]]
+    set pluginCore [::loadCorePlugins $scriptDir $pluginDirectories]
     set workerEnabled [$config get Plugins.worker_thread true]
     if {![string is boolean -strict $workerEnabled]} {
         error "Plugins.worker_thread must be boolean"
@@ -577,10 +786,10 @@ proc ::oodzGui::start {} {
         set modelInfoCallback [list $client modelInfo]
     }
     set registry [tPluginRegistry new $workspaceRoot $pluginDirectories ::oodzGui::approve [$config get Plugins.timeout_ms 1000] \
-        [$config get Plugins.max_output_chars 65536] $referenceRoots $skillRegistry $instructionRegistry $processRunner $pluginLazyLoading $pluginCore "" $pluginWorker $modelInfoCallback]
+        [$config get Plugins.max_output_chars 65536] $referenceRoots $skillRegistry $instructionRegistry $processRunner $pluginLazyLoading $pluginCore "" $pluginWorker $modelInfoCallback $commandExecutor]
     set systemRole [::buildAgentSystemRole $config $instructions [$skillRegistry summaries] [$instructionRegistry enabled] $runnerEnabled $pluginLazyLoading]
     set systemRole [::addModelIdentityToSystemRole $systemRole $client]
-    set agent [tAgent new [$config get Agent.name] $systemRole $client $registry [$config get Agent.max_iterations 16] ::oodzGui::streamChunk [$config get Agent.max_history_messages 40] [$config get Agent.summarize_history false]]
+    set agent [tAgent new [$config get Agent.name] $systemRole $client $registry [$config get Agent.max_iterations 16] ::oodzGui::streamChunk [$config get Agent.max_history_messages 200] [$config get Agent.summarize_history true] [$config get Agent.max_history_chars 120000]]
     set historyPath [$config get Agent.history_file .oodz/history.json]
     if {[file pathtype $historyPath] ne "absolute"} {
         set historyPath [file join $scriptDir $historyPath]

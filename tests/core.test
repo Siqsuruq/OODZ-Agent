@@ -79,23 +79,23 @@ test release-config-1.1 {published config is placeholder-only and conservative} 
 
 test skill-registry-1.1 {skills are discovered with concise metadata} -body {
     set registry [::tSkillRegistry new [list \
-        [file join $projectDir skills]]]
+        [file join $projectDir tests fixtures skills]]]
     try {
         set summaries [$registry summaries]
-        set skill [$registry get create-oodz-class]
+        set skill [$registry get example-workflow]
         list \
             [$registry names] \
             [dict get [lindex $summaries 0] name] \
-            [expr {[string first "NX domain classes" \
+            [expr {[string first "test workflow" \
                 [dict get [lindex $summaries 0] description]] >= 0}] \
-            [expr {[string first "oodz_lookup" \
+            [expr {[string first "smallest relevant change" \
                 [dict get $skill instructions]] >= 0}] \
             [file tail [dict get $skill path]]
     } finally {
         $registry destroy
     }
 } -result [list \
-    [list create-oodz-class] create-oodz-class 1 1 create-oodz-class]
+    [list example-workflow] example-workflow 1 1 example-workflow]
 
 test skill-registry-1.1a {skill confinement uses shared path comparison} -body {
     set registry [::tSkillRegistry new {}]
