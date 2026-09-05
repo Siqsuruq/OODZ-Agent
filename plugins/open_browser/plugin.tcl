@@ -19,8 +19,12 @@ proc ::plugins::open_browser::validateUrl {value} {
 proc ::plugins::open_browser::execute {
     workspaceRoot arguments settings
 } {
-    set url [::plugins::open_browser::validateUrl \
-        [dict get $arguments url]]
+    if {[dict exists $arguments url]} {
+        set url [::plugins::open_browser::validateUrl \
+            [dict get $arguments url]]
+    } else {
+        set url [dict get $settings default_url]
+    }
     set platform [::PluginSupport::currentPlatform]
     switch -- $platform {
         linux {

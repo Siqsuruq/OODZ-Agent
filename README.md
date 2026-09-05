@@ -769,6 +769,7 @@ For example:
 /tool sqitch_log {"limit":20}
 /tool sqitch_verify {}
 /tool open_browser {"url":"https://code.cloudz.cv/oodz_agent/"}
+/tool open_browser {}
 ```
 
 Direct tool calls use the same schemas, workspace confinement, execution limits,
@@ -795,8 +796,9 @@ client, so OODZ classifies this tool as write-capable and requires explicit
 approval even though its intended purpose is validation. It accepts no target,
 database URI, change range, variables, or arbitrary command options.
 
-On Linux and Windows, `open_browser` launches one complete HTTP or HTTPS URL in
-the default desktop browser. Linux uses `xdg-open`; Windows directly invokes
+On Linux and Windows, `open_browser` launches the default desktop browser. The
+URL is optional; omitting it opens `about:blank`, while model-provided URLs must
+use HTTP or HTTPS. Linux uses `xdg-open`; Windows directly invokes
 `rundll32.exe` with `url.dll,FileProtocolHandler`, without routing the URL
 through `cmd.exe`. It requires approval and rejects local files, embedded
 credentials, non-web schemes, whitespace, control characters, and arbitrary
@@ -804,6 +806,7 @@ command options:
 
 ```text
 /tool open_browser {"url":"https://code.cloudz.cv/oodz_agent/"}
+/tool open_browser {}
 ```
 
 For one-shot/scripted use, pass the task as arguments:

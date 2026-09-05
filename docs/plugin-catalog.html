@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Bundled OODZ Agent plugin catalog.">
+  <title>Plugin catalog · OODZ Agent</title>
+  <link href="src/pico/pico.min.css" rel="stylesheet"><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top docs-navbar"><div class="container">
+    <a class="navbar-brand fw-bold" href="index.html"><span class="brand-mark">O</span> OODZ Agent</a>
+    <div class="collapse navbar-collapse" id="docsNav"><div class="navbar-nav ms-auto"><a class="nav-link" href="index.html">Overview</a><a class="nav-link" href="getting-started.html">Getting started</a><a class="nav-link" href="architecture.html">Architecture</a><a class="nav-link" href="plugins.html">Plugin how-to</a><a class="nav-link active" href="plugin-catalog.html">Catalog</a><a class="nav-link" href="oodz-framework.html">OODZ context</a><a class="nav-link" href="operations.html">Operations</a><a class="nav-link" href="download.html">Download</a><a class="nav-link" href="source.html">Source</a></div></div>
+  </div></nav>
+  <main class="container py-5">
+    <div class="section-heading"><span>Reference</span><h1 class="display-4">Bundled plugin catalog</h1><p class="lead text-secondary">A compact index of the tools shipped with OODZ Agent.</p></div>
+    <p>Write tools require explicit approval. Platform and executable requirements can make a plugin unavailable on a particular installation. For manifests and handler development, see the <a href="plugins.html">plugin how-to</a>.</p>
+    <div class="table-responsive"><table class="plugin-table">
+      <thead><tr><th scope="col">Plugin</th><th scope="col">Access</th><th scope="col">Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>apply_patch</code></td><td><span class="permission write">write</span></td><td>Apply exact search-and-replace blocks atomically to an existing UTF-8 file.</td></tr>
+        <tr><td><code>copy_file</code></td><td><span class="permission write">write</span></td><td>Copy one workspace file without overwriting the destination.</td></tr>
+        <tr><td><code>create_file</code></td><td><span class="permission write">write</span></td><td>Create a new file inside the workspace.</td></tr>
+        <tr><td><code>delete_file</code></td><td><span class="permission write">write</span></td><td>Delete one workspace file; directory deletion is refused.</td></tr>
+        <tr><td><code>edit_file</code></td><td><span class="permission write">write</span></td><td>Replace one unique exact fragment in a UTF-8 workspace file.</td></tr>
+        <tr><td><code>file_info</code></td><td><span class="permission read">read</span></td><td>Report a workspace path's type, size, modification time, and permissions.</td></tr>
+        <tr><td><code>fossil_add</code></td><td><span class="permission write">write</span></td><td>Schedule one existing file for addition to the next Fossil commit.</td></tr>
+        <tr><td><code>fossil_branch_close</code></td><td><span class="permission write">write</span></td><td>Mark one local Fossil branch closed without deleting its history.</td></tr>
+        <tr><td><code>fossil_branch_info</code></td><td><span class="permission read">read</span></td><td>Show metadata for one named Fossil branch.</td></tr>
+        <tr><td><code>fossil_branch_new</code></td><td><span class="permission write">write</span></td><td>Create one local branch from a named basis without switching to it.</td></tr>
+        <tr><td><code>fossil_branch_reopen</code></td><td><span class="permission write">write</span></td><td>Reopen one named closed Fossil branch.</td></tr>
+        <tr><td><code>fossil_branch_switch</code></td><td><span class="permission write">write</span></td><td>Switch the checkout to one branch while retaining uncommitted changes.</td></tr>
+        <tr><td><code>fossil_branches</code></td><td><span class="permission read">read</span></td><td>List all branches, including closed branches.</td></tr>
+        <tr><td><code>fossil_changes</code></td><td><span class="permission read">read</span></td><td>List classified files that would enter the next commit.</td></tr>
+        <tr><td><code>fossil_commit</code></td><td><span class="permission write">write</span></td><td>Commit all checkout changes locally with a required message.</td></tr>
+        <tr><td><code>fossil_diff</code></td><td><span class="permission read">read</span></td><td>Show the complete checkout diff or the diff for one confined file.</td></tr>
+        <tr><td><code>fossil_extras</code></td><td><span class="permission read">read</span></td><td>List unmanaged files using the checkout's ignore policy.</td></tr>
+        <tr><td><code>fossil_info</code></td><td><span class="permission read">read</span></td><td>Show checkout and checked-out version metadata.</td></tr>
+        <tr><td><code>fossil_ls</code></td><td><span class="permission read">read</span></td><td>List every managed file with its change status.</td></tr>
+        <tr><td><code>fossil_merge</code></td><td><span class="permission write">write</span></td><td>Merge one branch or check-in and leave the result uncommitted.</td></tr>
+        <tr><td><code>fossil_pull</code></td><td><span class="permission write">write</span></td><td>Pull public changes from the configured default remote.</td></tr>
+        <tr><td><code>fossil_push</code></td><td><span class="permission write">write</span></td><td>Push public changes to the configured default remote.</td></tr>
+        <tr><td><code>fossil_redo</code></td><td><span class="permission write">write</span></td><td>Reapply the most recently undone change to one path.</td></tr>
+        <tr><td><code>fossil_remove</code></td><td><span class="permission write">write</span></td><td>Mark one file removed and delete it from disk.</td></tr>
+        <tr><td><code>fossil_revert</code></td><td><span class="permission write">write</span></td><td>Discard uncommitted changes in one file with Fossil undo recording.</td></tr>
+        <tr><td><code>fossil_stash_list</code></td><td><span class="permission read">read</span></td><td>List all stash entries and their files.</td></tr>
+        <tr><td><code>fossil_stash_pop</code></td><td><span class="permission write">write</span></td><td>Apply and remove the newest stash entry.</td></tr>
+        <tr><td><code>fossil_stash_save</code></td><td><span class="permission write">write</span></td><td>Stash all checkout changes with a required comment.</td></tr>
+        <tr><td><code>fossil_status</code></td><td><span class="permission read">read</span></td><td>Show checkout status, local changes, and metadata.</td></tr>
+        <tr><td><code>fossil_timeline</code></td><td><span class="permission read">read</span></td><td>Show 1–100 recent check-ins in concise form.</td></tr>
+        <tr><td><code>fossil_undo</code></td><td><span class="permission write">write</span></td><td>Restore one path from Fossil's single-level undo snapshot.</td></tr>
+        <tr><td><code>fossil_update</code></td><td><span class="permission write">write</span></td><td>Update to the unique local descendant leaf without autosync.</td></tr>
+        <tr><td><code>http_delete</code></td><td><span class="permission write">write</span></td><td>Send DELETE to a configured scoped HTTP service.</td></tr>
+        <tr><td><code>http_get</code></td><td><span class="permission read">read</span></td><td>Send GET to a configured scoped HTTP service.</td></tr>
+        <tr><td><code>http_patch</code></td><td><span class="permission write">write</span></td><td>Send a JSON PATCH request to a configured scoped service.</td></tr>
+        <tr><td><code>http_post</code></td><td><span class="permission write">write</span></td><td>Send a JSON POST request to a configured scoped service.</td></tr>
+        <tr><td><code>http_put</code></td><td><span class="permission write">write</span></td><td>Send a JSON PUT request to a configured scoped service.</td></tr>
+        <tr><td><code>list_files</code></td><td><span class="permission read">read</span></td><td>List files and directories at a workspace-relative path.</td></tr>
+        <tr><td><code>list_folders</code></td><td><span class="permission read">read</span></td><td>List only immediate folders at a workspace-relative path.</td></tr>
+        <tr><td><code>make_directory</code></td><td><span class="permission write">write</span></td><td>Create a directory and missing parents inside the workspace.</td></tr>
+        <tr><td><code>move_file</code></td><td><span class="permission write">write</span></td><td>Move or rename one file without overwriting the destination.</td></tr>
+        <tr><td><code>oodz_lookup</code></td><td><span class="permission read">read</span></td><td>Search the compact OODZ framework capability index.</td></tr>
+        <tr><td><code>oodz_read</code></td><td><span class="permission read">read</span></td><td>Read a bounded numbered range from OODZ reference source.</td></tr>
+        <tr><td><code>oodz_search</code></td><td><span class="permission read">read</span></td><td>Search OODZ reference source for literal text.</td></tr>
+        <tr><td><code>open_browser</code></td><td><span class="permission write">write</span><small> Linux, Windows</small></td><td>Open the default browser at a blank page or approved HTTP(S) URL.</td></tr>
+        <tr><td><code>random_string</code></td><td><span class="permission read">read</span></td><td>Generate bounded non-cryptographic random test data.</td></tr>
+        <tr><td><code>read_file</code></td><td><span class="permission read">read</span></td><td>Read a UTF-8 file or a bounded numbered line range.</td></tr>
+        <tr><td><code>save_translation</code></td><td><span class="permission write">write</span></td><td>Save a label and six translations to the configured service.</td></tr>
+        <tr><td><code>search_files</code></td><td><span class="permission read">read</span></td><td>Search UTF-8 workspace files for case-insensitive literal text.</td></tr>
+        <tr><td><code>sqitch_log</code></td><td><span class="permission read">read</span></td><td>Show 1–100 concise deployment events for the default target.</td></tr>
+        <tr><td><code>sqitch_status</code></td><td><span class="permission read">read</span></td><td>Show deployment status for the default Sqitch target.</td></tr>
+        <tr><td><code>sqitch_verify</code></td><td><span class="permission write">write</span></td><td>Run verification scripts against the default Sqitch target.</td></tr>
+        <tr><td><code>system_info</code></td><td><span class="permission read">read</span></td><td>Report OS, architecture, Tcl, threads, executable, and workspace.</td></tr>
+        <tr><td><code>unzip</code></td><td><span class="permission write">write</span></td><td>Extract a bounded ZIP into a new directory without overwriting.</td></tr>
+        <tr><td><code>write_file</code></td><td><span class="permission write">write</span></td><td>Write UTF-8 text to a workspace-relative file.</td></tr>
+        <tr><td><code>xml_validate</code></td><td><span class="permission read">read</span></td><td>Check that a UTF-8 XML file is well-formed and report its root.</td></tr>
+        <tr><td><code>zip</code></td><td><span class="permission write">write</span></td><td>Create a ZIP from a workspace directory without overwriting.</td></tr>
+      </tbody>
+    </table></div>
+  </main>
+  <footer class="docs-footer"><div class="container d-flex justify-content-between"><a href="plugins.html">← Plugin how-to</a><a href="oodz-framework.html">Next: OODZ context →</a></div></footer>
+</body></html>

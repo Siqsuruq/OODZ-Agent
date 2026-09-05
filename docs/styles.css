@@ -118,6 +118,13 @@ code, pre { font-size: .86em; }
 .code-block code { color: inherit; background: transparent; }
 .table-responsive { overflow-x: auto; }
 .command-table code { color: #5b8523; font-weight: 800; }
+.plugin-table { width: 100%; min-width: 680px; }
+.plugin-table th { white-space: nowrap; }
+.plugin-table td:first-child { width: 16rem; }
+.plugin-table td:nth-child(2) { width: 9rem; white-space: nowrap; }
+.plugin-table td { vertical-align: top; }
+.plugin-table code { color: #5b8523; font-weight: 800; white-space: nowrap; }
+.plugin-table small { display: block; margin-top: .3rem; color: var(--pico-muted-color); }
 
 .architecture-flow { display: flex; align-items: center; gap: .65rem; margin: 1.5rem 0; }
 .architecture-flow > div { flex: 1; padding: 1rem; text-align: center; background: var(--pico-card-sectioning-background-color); border: 1px solid var(--pico-muted-border-color); border-radius: .75rem; }

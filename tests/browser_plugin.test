@@ -116,4 +116,33 @@ test open-browser-1.3 {Windows uses rundll32 without a command shell} -body {
 } -result [list "sandboxed Tcl output" rundll32.exe \
     [list url.dll,FileProtocolHandler "https://example.com/windows"]]
 
+test open-browser-1.4 {omitting URL opens a neutral blank page} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] open-browser-blank-[pid]]]
+    file mkdir $root
+    set fakeOpener [file join $root xdg-open]
+    set channel [open $fakeOpener w]
+    puts $channel {#!/bin/sh}
+    close $channel
+    file attributes $fakeOpener -permissions 0755
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute \
+        [dict create xdg-open $fakeOpener]]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner \
+        false {} linux]
+    set ::ApprovalMock::approved 1
+    try {
+        set result [$plugins invoke open_browser [::json::write object]]
+        set command [lindex [lindex $::RunnerMock::calls 0] 0]
+        list $result [lrange $command 1 end]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list "sandboxed Tcl output" [list about:blank]]
+
 ::finishTests
