@@ -36,6 +36,11 @@
         set maxOutput $configuredMaxOutput
     }
 
+    method cancel {} {
+        $runner cancel
+        return
+    }
+
     method rejectControlArguments {arguments} {
         foreach argument $arguments {
             if {$argument eq "&"

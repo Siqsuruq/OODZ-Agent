@@ -27,6 +27,10 @@ namespace eval ::PluginSupport {
         return $os
     }
 
+    proc fixedPlatform {platform} {
+        return $platform
+    }
+
     proc isWithin {path root} {
         set pathParts [file split [file normalize $path]]
         set rootParts [file split [file normalize $root]]
@@ -215,6 +219,9 @@ namespace eval ::PluginSupport {
         interp alias $pluginInterpreter \
             ::PluginSupport::formatProcessResult {} \
             ::PluginSupport::formatProcessResult
+        interp alias $pluginInterpreter \
+            ::PluginSupport::currentPlatform {} \
+            ::PluginSupport::fixedPlatform $currentPlatform
         if {$processRunner ne ""} {
             interp alias $pluginInterpreter \
                 ::PluginSupport::runConfiguredCommand {} \
@@ -236,6 +243,19 @@ namespace eval ::PluginSupport {
             }
             dict set activePlugins $name 1
         }
+    }
+
+    method cancel {} {
+        if {$pluginWorker ne ""} {
+            $pluginWorker cancel
+        }
+        if {$processRunner ne ""} {
+            $processRunner cancel
+        }
+        if {$commandExecutor ne ""} {
+            $commandExecutor cancel
+        }
+        return
     }
 
     destructor {
@@ -317,6 +337,13 @@ namespace eval ::PluginSupport {
         dict set manifest platforms $platforms
         set requirements [::PluginSupport::commaList \
             [dict get $manifest requires]]
+        set platformRequirementKey "requires_$currentPlatform"
+        if {[dict exists $manifest $platformRequirementKey]} {
+            set requirements [concat $requirements \
+                [::PluginSupport::commaList \
+                    [dict get $manifest $platformRequirementKey]]]
+        }
+        set requirements [lsort -unique $requirements]
         foreach requirement $requirements {
             if {![regexp {^[a-z0-9_.+:-]+$} $requirement]} {
                 error "Invalid plugin requirement for $name: $requirement"

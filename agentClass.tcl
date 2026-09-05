@@ -5,6 +5,7 @@
     variable log name systemRole llmClient memory pluginRegistry maxIterations
     variable streamCallback maxHistoryMessages maxHistoryChars historySummary
     variable summarizedMessageCount summarizeHistoryEnabled
+    variable cancelRequested
 
     constructor {
         agentName role clientObject {registryObject ""} {iterationLimit 8}
@@ -38,11 +39,16 @@
         set memory [list] ;# Simple list to track conversation history
         set historySummary ""
         set summarizedMessageCount 0
+        set cancelRequested 0
 
         $log log info "Agent '$name' successfully spawned."
     }
 
     method run {task} {
+        set cancelRequested 0
+        if {"beginRequest" in [info object methods $llmClient -all]} {
+            $llmClient beginRequest
+        }
         $log log info "Agent execution triggered for task: '$task'"
         set response ""
         set userMessage [dict create role user content $task]
@@ -59,8 +65,17 @@
                 set requestMessages [dict get $response messages]
                 set response [dict get $response content]
             }
-        } errMsg]} {
+        } errMsg errOptions]} {
             $log log critical "Agent run failed: $errMsg"
+            if {[dict exists $errOptions -errorcode]
+                    && [dict get $errOptions -errorcode] eq {OODZ CANCELLED}} {
+                lappend requestMessages [dict create role assistant content \
+                    "Request stopped by user."]
+                set newMessages [lrange $requestMessages \
+                    [llength $requestHistory] end]
+                set memory [concat $memory $newMessages]
+                return -options $errOptions $errMsg
+            }
             lappend requestMessages [dict create role assistant content \
                 "The previous task ended before a final response: $errMsg"]
             set newMessages [lrange $requestMessages \
@@ -79,6 +94,7 @@
     method runAgentLoop {messagesVariable} {
         upvar 1 $messagesVariable messages
         for {set iteration 1} {$iteration <= $maxIterations} {incr iteration} {
+            my checkCancelled
             # Plugin discovery may activate additional definitions between
             # model turns, so take a fresh snapshot on every iteration.
             set tools [$pluginRegistry definitions]
@@ -89,6 +105,7 @@
             } else {
                 set assistantMessage [$llmClient queryMessage $systemRole $activeMessages $tools]
             }
+            my checkCancelled
 
             if {![dict exists $assistantMessage tool_calls] || [llength [dict get $assistantMessage tool_calls]] == 0} {
                 lappend messages $assistantMessage
@@ -117,6 +134,25 @@
         }
 
         error "Agent exceeded maximum iterations: $maxIterations"
+    }
+
+    method cancel {} {
+        set cancelRequested 1
+        if {"cancel" in [info object methods $llmClient -all]} {
+            $llmClient cancel
+        }
+        if {$pluginRegistry ne ""
+                && "cancel" in [info object methods $pluginRegistry -all]} {
+            $pluginRegistry cancel
+        }
+        return
+    }
+
+    method checkCancelled {} {
+        if {$cancelRequested} {
+            return -code error -errorcode {OODZ CANCELLED} \
+                "Request stopped by user"
+        }
     }
 
 

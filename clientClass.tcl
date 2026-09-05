@@ -4,10 +4,38 @@ package require json
 package require json::write
 
 ::oo::class create tHttpTransport {
-    variable streamBuffer streamEventData streamBody
+    variable streamBuffer streamEventData streamBody activeToken activeDone waitDone
+
+    constructor {} {
+        set activeToken ""
+        set activeDone 0
+        set waitDone 0
+    }
+
+    destructor {
+        my cancel
+    }
+
+    method completed {token} {
+        set activeDone 1
+    }
+
+    method cancel {} {
+        if {$activeToken ne ""} {
+            catch {::http::reset $activeToken cancelled}
+        }
+        set waitDone 1
+    }
 
     method post {url payload headers timeout} {
-        set token [::http::geturl $url -query [encoding convertto utf-8 $payload] -type "application/json" -headers $headers -timeout $timeout]
+        set activeDone 0
+        set activeToken [::http::geturl $url \
+            -query [encoding convertto utf-8 $payload] \
+            -type "application/json" -headers $headers -timeout $timeout \
+            -command [list [self] completed]]
+        vwait [namespace which -variable activeDone]
+        set token $activeToken
+        set activeToken ""
         try {
             return [dict create status [::http::status $token] code [::http::ncode $token] body [encoding convertfrom utf-8 [::http::data $token]] error [::http::error $token]]
         } finally {
@@ -16,14 +44,26 @@ package require json::write
     }
 
     method wait {milliseconds} {
-        after $milliseconds
+        set waitDone 0
+        set timer [after $milliseconds [list set \
+            [namespace which -variable waitDone] 1]]
+        vwait [namespace which -variable waitDone]
+        after cancel $timer
     }
 
     method postStream {url payload headers timeout eventCallback} {
         set streamBuffer ""
         set streamEventData {}
         set streamBody ""
-        set token [::http::geturl $url -query [encoding convertto utf-8 $payload] -type "application/json" -headers $headers -timeout $timeout -handler [list [self] receiveStream $eventCallback]]
+        set activeDone 0
+        set activeToken [::http::geturl $url \
+            -query [encoding convertto utf-8 $payload] \
+            -type "application/json" -headers $headers -timeout $timeout \
+            -handler [list [self] receiveStream $eventCallback] \
+            -command [list [self] completed]]
+        vwait [namespace which -variable activeDone]
+        set token $activeToken
+        set activeToken ""
         try {
             set body [encoding convertfrom utf-8 $streamBody]
             if {$body eq "" && [::http::data $token] ne ""} {
@@ -69,7 +109,7 @@ package require json::write
     variable log provider apiKey modelUrl modelName timeout
     variable maxRetries retryDelay transport ownsTransport
     variable streamingMessage streamingToolCalls thinkingEnabled
-    variable reportedModel
+    variable reportedModel cancelRequested
 
     constructor {configObj {transportObj ""}} {
         set log [::tLogger getLogger [self class]]
@@ -109,6 +149,7 @@ package require json::write
         }
         set thinkingEnabled [expr {$configuredThinking ? 1 : 0}]
         set reportedModel ""
+        set cancelRequested 0
 
         if {$transportObj eq ""} {
             set transport [::tHttpTransport new]
@@ -137,6 +178,24 @@ package require json::write
         return [dict get $message content]
     }
 
+    method beginRequest {} {
+        set cancelRequested 0
+    }
+
+    method cancel {} {
+        set cancelRequested 1
+        if {"cancel" in [info object methods $transport -all]} {
+            $transport cancel
+        }
+    }
+
+    method checkCancelled {} {
+        if {$cancelRequested} {
+            return -code error -errorcode {OODZ CANCELLED} \
+                "Request stopped by user"
+        }
+    }
+
     method queryMessage {systemPrompt messages {tools {}}} {
         $log log info "Sending HTTP POST request to API..."
         my logRequestShape $messages
@@ -145,9 +204,11 @@ package require json::write
         set maxAttempts [expr {$maxRetries + 1}]
 
         for {set attempt 1} {$attempt <= $maxAttempts} {incr attempt} {
+            my checkCancelled
             if {[catch {
                 $transport post $modelUrl $payload [my requestHeaders] $timeout
             } response transportOptions]} {
+                my checkCancelled
                 if {$attempt < $maxAttempts} {
                     $log log warn "Transport failure; retrying ($attempt/$maxAttempts)"
                     my waitBeforeRetry $attempt
@@ -156,6 +217,7 @@ package require json::write
                 return -options $transportOptions $response
             }
 
+            my checkCancelled
             set status [dict get $response status]
             set code [dict get $response code]
             set body [dict get $response body]
@@ -189,6 +251,7 @@ package require json::write
         if {[catch {
             $transport postStream $modelUrl $payload [my requestHeaders] $timeout [list [self] consumeStreamEvent $contentCallback]
         } response]} {
+            my checkCancelled
             $log log warn "Streaming transport exception; retrying without streaming"
             set fallbackMessage [my queryMessage $systemPrompt $messages $tools]
             if {[dict exists $fallbackMessage content]
@@ -197,6 +260,7 @@ package require json::write
             }
             return $fallbackMessage
         }
+        my checkCancelled
         set status [dict get $response status]
         set code [dict get $response code]
         set body [dict get $response body]

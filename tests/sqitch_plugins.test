@@ -1,0 +1,135 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test sqitch-status-1.1 {Sqitch status uses one fixed bounded command} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] sqitch-status-[pid]]]
+    file mkdir $root
+    set fakeSqitch [file join $root sqitch]
+    set channel [open $fakeSqitch w]
+    puts $channel {#!/bin/sh}
+    close $channel
+    file attributes $fakeSqitch -permissions 0755
+
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute \
+        [dict create sqitch $fakeSqitch]]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" $runner]
+    try {
+        set result [$plugins invoke sqitch_status \
+            [::json::write object]]
+        set call [lindex $::RunnerMock::calls 0]
+        set command [lindex $call 0]
+        set definition {}
+        foreach candidate [$plugins definitions] {
+            if {[dict get $candidate name] eq "sqitch_status"} {
+                set definition $candidate
+                break
+            }
+        }
+        list \
+            $result \
+            [file tail [lindex $command 0]] \
+            [lrange $command 1 end] \
+            [lindex $call 1] \
+            [lindex $call 2] \
+            [dict get $definition name] \
+            [dict get $definition parameters properties]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    "sandboxed Tcl output" sqitch [list status] 2500 4096 sqitch_status \
+    [dict create]]
+
+test sqitch-log-1.1 {Sqitch log has fixed formatting and a bounded limit} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] sqitch-log-[pid]]]
+    file mkdir $root
+    set fakeSqitch [file join $root sqitch]
+    set channel [open $fakeSqitch w]
+    puts $channel {#!/bin/sh}
+    close $channel
+    file attributes $fakeSqitch -permissions 0755
+
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute \
+        [dict create sqitch $fakeSqitch]]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" $runner]
+    try {
+        set defaultResult [$plugins invoke sqitch_log \
+            [::json::write object]]
+        set selectedResult [$plugins invoke sqitch_log \
+            [::json::write object limit 7]]
+        set invalidCode [catch {
+            $plugins invoke sqitch_log \
+                [::json::write object limit 101]
+        } invalidMessage]
+        list \
+            $defaultResult \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            $selectedResult \
+            [lrange [lindex [lindex $::RunnerMock::calls 1] 0] 1 end] \
+            $invalidCode $invalidMessage \
+            [llength $::RunnerMock::calls]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    "sandboxed Tcl output" \
+    [list log --max-count 20 --oneline --no-color] \
+    "sandboxed Tcl output" \
+    [list log --max-count 7 --oneline --no-color] \
+    1 "sqitch_log limit must be an integer from 1 to 100" 2]
+
+test sqitch-verify-1.1 {Sqitch verify is fixed and approval-gated} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] sqitch-verify-[pid]]]
+    file mkdir $root
+    set fakeSqitch [file join $root sqitch]
+    set channel [open $fakeSqitch w]
+    puts $channel {#!/bin/sh}
+    close $channel
+    file attributes $fakeSqitch -permissions 0755
+
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute \
+        [dict create sqitch $fakeSqitch]]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke sqitch_verify [::json::write object]
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke sqitch_verify \
+            [::json::write object]]
+        list \
+            $deniedCode $deniedMessage \
+            $result \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            [llength $::RunnerMock::calls]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: sqitch_verify" \
+    "sandboxed Tcl output" [list verify] 1]
+
+::finishTests

@@ -245,7 +245,28 @@ test client-json-1.4 {DeepSeek payload includes plugin tool definitions} -body {
         $registry destroy
         $config destroy
     }
-} -result [list 53 false disabled function read_file object [list path]]
+} -result [list 57 false disabled function read_file object [list path]]
+
+test client-cancel-1.1 {cancelled requests stop before transport retries} -body {
+    set config [::FakeConfig new [dict create \
+        LLM.api_key test-only-key LLM.max_retries 3]]
+    set transport [::FakeTransport new {}]
+    set client [::tLLMClient new $config $transport]
+    try {
+        $client beginRequest
+        $client cancel
+        set code [catch {
+            $client queryMessage system [list \
+                [dict create role user content stop]]
+        } message options]
+        list $code $message [dict get $options -errorcode] \
+            [llength [$transport getRequests]]
+    } finally {
+        $client destroy
+        $transport destroy
+        $config destroy
+    }
+} -result [list 1 "Request stopped by user" {OODZ CANCELLED} 0]
 
 test client-model-info-1.1 {model identity distinguishes configured and reported models} -body {
     set config [::FakeConfig new [dict create \

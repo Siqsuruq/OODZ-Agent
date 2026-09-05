@@ -229,6 +229,9 @@
         } elseif {$overflow} {
             set status output_limit
             set exitCode ""
+        } elseif {$terminationReason eq "cancelled"} {
+            set status cancelled
+            set exitCode ""
         }
         return [dict create \
             status $status \
@@ -272,6 +275,13 @@
         }
         fileevent $channel readable {}
         set done 1
+    }
+
+    method cancel {} {
+        if {$channel ne "" && !$done} {
+            my terminate cancelled
+        }
+        return
     }
 
     method decodeOutput {bytes} {

@@ -155,6 +155,7 @@ proc ::oodzGui::send {} {
     set busy 1
     .input delete 1.0 end
     .send configure -state disabled
+    .stop configure -state normal
     .status configure -text "Working…"
     ::oodzGui::appendMessage You $task
     .conversation configure -state normal
@@ -166,9 +167,14 @@ proc ::oodzGui::send {} {
     if {$changeTracker ne ""} {
         set changeSnapshot [$changeTracker snapshot]
     }
-    if {[catch {$agent run $task} result]} {
+    if {[catch {$agent run $task} result options]} {
         ::oodzMarkdownTk::finish .conversation
-        ::oodzGui::appendMessage Error "Error: $result"
+        if {[dict exists $options -errorcode]
+                && [dict get $options -errorcode] eq {OODZ CANCELLED}} {
+            ::oodzGui::appendMessage Status "Request stopped."
+        } else {
+            ::oodzGui::appendMessage Error "Error: $result"
+        }
     } else {
         ::oodzMarkdownTk::finish .conversation
         .conversation configure -state normal
@@ -189,8 +195,20 @@ proc ::oodzGui::send {} {
     }
     set busy 0
     .send configure -state normal
+    .stop configure -state disabled
     .status configure -text "Ready"
     focus .input
+}
+
+proc ::oodzGui::stop {} {
+    variable agent
+    variable busy
+    if {!$busy} {
+        return
+    }
+    .stop configure -state disabled
+    .status configure -text "Stopping…"
+    $agent cancel
 }
 
 proc ::oodzGui::newConversation {} {
@@ -633,10 +651,13 @@ proc ::oodzGui::buildWidgets {} {
     .conversation tag configure ErrorLabel -foreground #ff6b6b
     .conversation tag configure Changes -foreground #a9dc52
     .conversation tag configure ChangesLabel -foreground #a9dc52
+    .conversation tag configure Status -foreground #ffd75f
+    .conversation tag configure StatusLabel -foreground #ffd75f
     ::oodzMarkdownTk::attach .conversation
     text .input -height 5 -wrap word -padx 8 -pady 8 -selectbackground #5294e2 -selectforeground white
     ttk::frame .actions
     ttk::button .send -text "Send" -command ::oodzGui::send
+    ttk::button .stop -text "Stop" -state disabled -command ::oodzGui::stop
     ttk::button .new -text "New" -command ::oodzGui::newConversation
     ttk::button .skillsButton -text "Skills" -command ::oodzGui::showSkills
     ttk::button .toolsButton -text "Tools" -command ::oodzGui::showTools
@@ -658,7 +679,7 @@ proc ::oodzGui::buildWidgets {} {
     grid .scroll -in .main -row 0 -column 1 -sticky ns
     grid .input -in .main -row 1 -column 0 -columnspan 2 -sticky ew -pady {10 8}
     grid .actions -in .main -row 2 -column 0 -columnspan 2 -sticky ew
-    pack .send .new .toolsButton .skillsButton -in .actions -side left -padx {0 8}
+    pack .send .stop .new .toolsButton .skillsButton -in .actions -side left -padx {0 8}
     pack .hint .status .themeToggle -in .actions -side right -padx {8 0}
     ::oodzGui::applyTextTheme
     grid rowconfigure . 0 -weight 1

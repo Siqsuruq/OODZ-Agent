@@ -388,5 +388,27 @@ test process-runner-1.2 {Tcl execution is model-visible and approved} -body {
     1 1 1 "Plugin execution denied: run_tcl_file" \
     "sandboxed Tcl output" "sandboxed Tcl output" object]
 
+test process-runner-cancel-1.1 {active Tcl process can be stopped} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] process-cancel-[pid]]]
+    file mkdir $root
+    set channel [open [file join $root slow.tcl] w]
+    puts $channel {after 5000}
+    close $channel
+    set runner [::tProcessRunner new $root tclsh9.0 10000 4096]
+    try {
+        after 50 [list $runner cancel]
+        set started [clock milliseconds]
+        set result [$runner runTclFile slow.tcl]
+        list \
+            [dict get $result status] \
+            [dict get $result exit_code] \
+            [expr {[clock milliseconds] - $started < 2000}]
+    } finally {
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list cancelled "" 1]
+
 
 ::finishTests

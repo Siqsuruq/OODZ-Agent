@@ -99,6 +99,15 @@ package require Thread 3.0
                     set runner ""
                     return
                 }
+
+                proc cancel {} {
+                    variable runner
+                    if {$runner ne ""
+                            && [info object isa object $runner]} {
+                        $runner cancel
+                    }
+                    return
+                }
             }
 
             thread::wait
@@ -208,6 +217,13 @@ package require Thread 3.0
 
     method busy {} {
         expr {[dict size $asyncVariables] > 0}
+    }
+
+    method cancel {} {
+        if {$threadId ne "" && [thread::exists $threadId]} {
+            thread::send -async $threadId ::PluginWorkerThread::cancel
+        }
+        return
     }
 
     method threadId {} {

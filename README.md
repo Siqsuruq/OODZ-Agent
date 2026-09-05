@@ -730,11 +730,12 @@ wish gui.tcl
 ```
 
 The desktop interface provides a conversation view, multiline input,
-streaming responses, persistent history, New/Send controls, and write approval
+streaming responses, persistent history, New/Send/Stop controls, and write approval
 dialogs. Its menu can edit the configured workspace instruction file, open the
 Tools and Skills dialogs, and display the application version. Saved workspace
 instructions become active on the next request without restarting the agent or
-clearing its conversation. Assistant Markdown is styled while it streams
+clearing its conversation. Stop aborts an active model HTTP request and prevents
+automatic retry or fallback for that request. Assistant Markdown is styled while it streams
 without reparsing the entire conversation. Its Tools dialog lists every
 available tool, displays its description and JSON argument schema, and can
 invoke it locally without calling the LLM.
@@ -764,10 +765,46 @@ For example:
 /tool list_files {}
 /tool file_info {"path":"main.tcl"}
 /tool xml_validate {"path":"layout.xml"}
+/tool sqitch_status {}
+/tool sqitch_log {"limit":20}
+/tool sqitch_verify {}
+/tool open_browser {"url":"https://code.cloudz.cv/oodz_agent/"}
 ```
 
 Direct tool calls use the same schemas, workspace confinement, execution limits,
 and write approvals as model-selected calls.
+
+`sqitch_status` runs the fixed command `sqitch status` in the workspace and
+reports the default target's deployment state. It requires Sqitch and the
+appropriate database client to be installed on the host, but it is still
+discovered when they are absent and reports the missing executable only when
+invoked. The tool accepts no model-selected command, target, database URI, or
+option.
+
+`sqitch_log` returns at most 100 deployment events from the default target. It
+uses Sqitch's concise one-line format with color disabled so the result remains
+predictable for both terminal and model consumption:
+
+```text
+/tool sqitch_log {"limit":20}
+```
+
+`sqitch_verify` runs the fixed command `sqitch verify` against the default
+target. Sqitch executes the project's verification scripts through its database
+client, so OODZ classifies this tool as write-capable and requires explicit
+approval even though its intended purpose is validation. It accepts no target,
+database URI, change range, variables, or arbitrary command options.
+
+On Linux and Windows, `open_browser` launches one complete HTTP or HTTPS URL in
+the default desktop browser. Linux uses `xdg-open`; Windows directly invokes
+`rundll32.exe` with `url.dll,FileProtocolHandler`, without routing the URL
+through `cmd.exe`. It requires approval and rejects local files, embedded
+credentials, non-web schemes, whitespace, control characters, and arbitrary
+command options:
+
+```text
+/tool open_browser {"url":"https://code.cloudz.cv/oodz_agent/"}
+```
 
 For one-shot/scripted use, pass the task as arguments:
 
