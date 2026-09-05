@@ -770,6 +770,7 @@ For example:
 /tool sqitch_verify {}
 /tool open_browser {"url":"https://code.cloudz.cv/oodz_agent/"}
 /tool open_browser {}
+/tool web_search {"query":"official Tcl 9 documentation","limit":5}
 ```
 
 Direct tool calls use the same schemas, workspace confinement, execution limits,
@@ -807,6 +808,32 @@ command options:
 ```text
 /tool open_browser {"url":"https://code.cloudz.cv/oodz_agent/"}
 /tool open_browser {}
+```
+
+`web_search` queries an ordered list of fixed SearXNG instances and returns up
+to 10 concise titles, HTTP(S) links, and snippets. Two public instances are
+configured by default. Configure or replace them in
+`plugins/web_search/plugin.ini`; the model cannot select or override the list:
+
+```ini
+[settings]
+base_urls = https://search.mectov.my.id,https://sx.xo.st
+```
+
+The plugin tries instances in order and reports which one succeeded. Transport
+errors, non-success HTTP responses, oversized responses, and invalid SearXNG
+JSON automatically advance to the next configured instance.
+
+The SearXNG instance must enable `json` in its `search.formats` setting. The
+plugin is read-only, applies TLS verification and response limits, filters
+non-web result URLs, and labels search text as untrusted reference content.
+Public instances are third-party services: they receive the search query and
+the user's IP address, and may rate-limit requests, change policy, or disappear.
+For sensitive or dependable use, configure SearXNG instances you operate or
+trust.
+
+```text
+/tool web_search {"query":"official Sqitch documentation","limit":5}
 ```
 
 For one-shot/scripted use, pass the task as arguments:

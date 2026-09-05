@@ -20,8 +20,7 @@ proc ::plugins::open_browser::execute {
     workspaceRoot arguments settings
 } {
     if {[dict exists $arguments url]} {
-        set url [::plugins::open_browser::validateUrl \
-            [dict get $arguments url]]
+        set url [::plugins::open_browser::validateUrl [dict get $arguments url]]
     } else {
         set url [dict get $settings default_url]
     }
@@ -39,6 +38,5 @@ proc ::plugins::open_browser::execute {
             error "open_browser is not supported on platform: $platform"
         }
     }
-    ::PluginSupport::formatProcessResult \
-        [::PluginSupport::runConfiguredCommand $executable $commandArguments]
+    ::PluginSupport::formatProcessResult [::PluginSupport::runConfiguredCommand $executable $commandArguments]
 }

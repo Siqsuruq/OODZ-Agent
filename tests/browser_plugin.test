@@ -145,4 +145,27 @@ test open-browser-1.4 {omitting URL opens a neutral blank page} -body {
     }
 } -result [list "sandboxed Tcl output" [list about:blank]]
 
+test open-browser-1.5 {tool metadata tells the model not to request a URL} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    try {
+        set definition {}
+        foreach candidate [$registry definitions] {
+            if {[dict get $candidate name] eq "open_browser"} {
+                set definition $candidate
+                break
+            }
+        }
+        list \
+            [dict get $definition parameters required] \
+            [expr {[string first "do not ask for a URL" \
+                [dict get $definition description]] >= 0}] \
+            [expr {[string first "never ask the user" \
+                [dict get $definition parameters properties url \
+                    description]] >= 0}]
+    } finally {
+        $registry destroy
+    }
+} -result [list [list] 1 1]
+
 ::finishTests
