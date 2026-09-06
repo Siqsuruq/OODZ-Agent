@@ -66,8 +66,15 @@
         <tr><td><code>read_file</code></td><td><span class="permission read">read</span></td><td>Read a UTF-8 file or a bounded numbered line range.</td></tr>
         <tr><td><code>save_translation</code></td><td><span class="permission write">write</span></td><td>Save a label and six translations to the configured service.</td></tr>
         <tr><td><code>search_files</code></td><td><span class="permission read">read</span></td><td>Search UTF-8 workspace files for case-insensitive literal text.</td></tr>
+        <tr><td><code>sqitch_add</code></td><td><span class="permission write">write</span></td><td>Add one change to the default plan and generate its standard scripts.</td></tr>
+        <tr><td><code>sqitch_deploy</code></td><td><span class="permission write">write</span></td><td>Deploy pending changes to the configured default target.</td></tr>
         <tr><td><code>sqitch_log</code></td><td><span class="permission read">read</span></td><td>Show 1–100 concise deployment events for the default target.</td></tr>
+        <tr><td><code>sqitch_plan</code></td><td><span class="permission read">read</span></td><td>Show 1–500 planned changes in a concise, deterministic format.</td></tr>
+        <tr><td><code>sqitch_revert</code></td><td><span class="permission write">write</span></td><td>Revert to one required change or tag on the default target.</td></tr>
+        <tr><td><code>sqitch_rework</code></td><td><span class="permission write">write</span></td><td>Rework one existing change in the default plan.</td></tr>
+        <tr><td><code>sqitch_show</code></td><td><span class="permission read">read</span></td><td>Inspect one change, tag, or deploy/revert/verify script.</td></tr>
         <tr><td><code>sqitch_status</code></td><td><span class="permission read">read</span></td><td>Show deployment status for the default Sqitch target.</td></tr>
+        <tr><td><code>sqitch_tag</code></td><td><span class="permission write">write</span></td><td>Tag one explicit change in the default plan.</td></tr>
         <tr><td><code>sqitch_verify</code></td><td><span class="permission write">write</span></td><td>Run verification scripts against the default Sqitch target.</td></tr>
         <tr><td><code>system_info</code></td><td><span class="permission read">read</span></td><td>Report OS, architecture, Tcl, threads, executable, and workspace.</td></tr>
         <tr><td><code>unzip</code></td><td><span class="permission write">write</span></td><td>Extract a bounded ZIP into a new directory without overwriting.</td></tr>

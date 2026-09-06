@@ -765,8 +765,15 @@ For example:
 /tool list_files {}
 /tool file_info {"path":"main.tcl"}
 /tool xml_validate {"path":"layout.xml"}
+/tool sqitch_add {"change":"add_users","note":"Add the users table"}
+/tool sqitch_deploy {}
 /tool sqitch_status {}
 /tool sqitch_log {"limit":20}
+/tool sqitch_plan {"limit":100}
+/tool sqitch_revert {"to":"@v1.0"}
+/tool sqitch_rework {"change":"users_view","note":"Revise the users view"}
+/tool sqitch_show {"object":"add_users","view":"deploy"}
+/tool sqitch_tag {"tag":"v1.0","change":"@HEAD","note":"Release version 1.0"}
 /tool sqitch_verify {}
 /tool open_browser {"url":"https://code.cloudz.cv/oodz_agent/"}
 /tool open_browser {}
@@ -775,6 +782,28 @@ For example:
 
 Direct tool calls use the same schemas, workspace confinement, execution limits,
 and write approvals as model-selected calls.
+
+`sqitch_add` adds one validated change name to the default plan and generates
+the standard scripts from the project's configured templates. A non-empty note
+is mandatory, editor launching and multi-plan mode are forcibly disabled, and
+the operation requires approval. Dependencies, conflicts, engines, targets,
+plan paths, templates, variables, and arbitrary options are unavailable to the
+model:
+
+```text
+/tool sqitch_add {"change":"add_users","note":"Add the users table"}
+```
+
+`sqitch_deploy` runs the fixed command `sqitch deploy` in the workspace. It
+deploys all pending changes to the Sqitch project's configured default target.
+Because it executes project-controlled database scripts, it is write-capable
+and always requires explicit approval. The model cannot provide a target,
+database URI, destination change, variable, mode, database client, registry, or
+arbitrary option:
+
+```text
+/tool sqitch_deploy {}
+```
 
 `sqitch_status` runs the fixed command `sqitch status` in the workspace and
 reports the default target's deployment state. It requires Sqitch and the
@@ -789,6 +818,56 @@ predictable for both terminal and model consumption:
 
 ```text
 /tool sqitch_log {"limit":20}
+```
+
+`sqitch_plan` shows up to 500 planned events from the workspace's default
+Sqitch project. Output uses Sqitch's one-line format without headers or color.
+The optional limit defaults to 100; the model cannot supply a target, database
+URI, plan path, format, filter expression, or arbitrary command option:
+
+```text
+/tool sqitch_plan {"limit":100}
+```
+
+`sqitch_show` inspects one Sqitch object. Its view is restricted to `change`,
+`tag`, `deploy`, `revert`, or `verify`; it defaults to `change`. The object is a
+validated change name, tag, or ID, never a target, database URI, plan path, or
+arbitrary option:
+
+```text
+/tool sqitch_show {"object":"add_users"}
+/tool sqitch_show {"object":"add_users","view":"deploy"}
+/tool sqitch_show {"object":"@v1.0","view":"tag"}
+```
+
+`sqitch_revert` reverts the configured default target back to one required
+change or tag, which remains deployed after the operation. It never permits an
+unbounded revert of every change. The command runs non-interactively only after
+OODZ obtains explicit approval; target selection, database URIs, variables,
+clients, registries, and arbitrary options are unavailable to the model:
+
+```text
+/tool sqitch_revert {"to":"@v1.0"}
+```
+
+`sqitch_rework` reworks one validated existing change in the default plan and
+copies its previous scripts according to Sqitch's rework workflow. A bounded
+note and explicit approval are required. Multi-plan mode and editor launching
+are forcibly disabled; dependencies, conflicts, targets, plan paths, variables,
+and arbitrary options cannot be supplied by the model:
+
+```text
+/tool sqitch_rework {"change":"users_view","note":"Revise the users view"}
+```
+
+`sqitch_tag` attaches a safely named tag to one explicitly named change in the
+default plan. Requiring the change avoids accidentally tagging whichever change
+happens to be latest. The tag is supplied without its leading `@`; a bounded
+note and approval are mandatory, and multi-plan mode is forcibly disabled.
+Targets, engines, plan paths, and arbitrary options are unavailable:
+
+```text
+/tool sqitch_tag {"tag":"v1.0","change":"@HEAD","note":"Release version 1.0"}
 ```
 
 `sqitch_verify` runs the fixed command `sqitch verify` against the default
@@ -919,7 +998,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 148 Passed 148 Skipped 0 Failed 0
+all.tcl: Total 169 Passed 169 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the

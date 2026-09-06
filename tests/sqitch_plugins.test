@@ -2,6 +2,95 @@
 
 source [file join [file dirname [file normalize [info script]]] support.tcl]
 
+test sqitch-add-1.1 {Sqitch add validates inputs and requires approval} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] sqitch-add-[pid]]]
+    file mkdir $root
+    set fakeSqitch [file join $root sqitch]
+    set channel [open $fakeSqitch w]
+    puts $channel {#!/bin/sh}
+    close $channel
+    file attributes $fakeSqitch -permissions 0755
+
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute \
+        [dict create sqitch $fakeSqitch]]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set validArguments [::json::write object \
+        change [::json::write string add_users] \
+        note [::json::write string "Add the users table"]]
+    try {
+        set ::ApprovalMock::approved 1
+        set invalidCode [catch {
+            $plugins invoke sqitch_add [::json::write object \
+                change [::json::write string ../escape] \
+                note [::json::write string test]]
+        } invalidMessage]
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke sqitch_add $validArguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke sqitch_add $validArguments]
+        list \
+            $invalidCode $invalidMessage \
+            $deniedCode $deniedMessage $result \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            [llength $::RunnerMock::calls]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "sqitch_add change contains unsupported characters" \
+    1 "Plugin execution denied: sqitch_add" \
+    "sandboxed Tcl output" \
+    [list add --change add_users --note "Add the users table" \
+        --no-all --no-edit] 1]
+
+test sqitch-deploy-1.1 {Sqitch deploy is fixed and approval-gated} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] sqitch-deploy-[pid]]]
+    file mkdir $root
+    set fakeSqitch [file join $root sqitch]
+    set channel [open $fakeSqitch w]
+    puts $channel {#!/bin/sh}
+    close $channel
+    file attributes $fakeSqitch -permissions 0755
+
+    set ::RunnerMock::calls {}
+    set ::ApprovalMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute \
+        [dict create sqitch $fakeSqitch]]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke sqitch_deploy [::json::write object]
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke sqitch_deploy [::json::write object]]
+        list \
+            $deniedCode $deniedMessage $result \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            $::ApprovalMock::calls [llength $::RunnerMock::calls]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "Plugin execution denied: sqitch_deploy" \
+    "sandboxed Tcl output" [list deploy] \
+    [list [list sqitch_deploy {}] [list sqitch_deploy {}]] 1]
+
 test sqitch-status-1.1 {Sqitch status uses one fixed bounded command} -body {
     set root [file normalize [file join \
         [::tcltest::temporaryDirectory] sqitch-status-[pid]]]
@@ -92,6 +181,251 @@ test sqitch-log-1.1 {Sqitch log has fixed formatting and a bounded limit} -body 
     "sandboxed Tcl output" \
     [list log --max-count 7 --oneline --no-color] \
     1 "sqitch_log limit must be an integer from 1 to 100" 2]
+
+test sqitch-plan-1.1 {Sqitch plan has fixed formatting and bounded limits} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] sqitch-plan-[pid]]]
+    file mkdir $root
+    set fakeSqitch [file join $root sqitch]
+    set channel [open $fakeSqitch w]
+    puts $channel {#!/bin/sh}
+    close $channel
+    file attributes $fakeSqitch -permissions 0755
+
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute \
+        [dict create sqitch $fakeSqitch]]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" $runner]
+    try {
+        set defaultResult [$plugins invoke sqitch_plan \
+            [::json::write object]]
+        set selectedResult [$plugins invoke sqitch_plan \
+            [::json::write object limit 12]]
+        set invalidCode [catch {
+            $plugins invoke sqitch_plan \
+                [::json::write object limit 501]
+        } invalidMessage]
+        list \
+            $defaultResult \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            $selectedResult \
+            [lrange [lindex [lindex $::RunnerMock::calls 1] 0] 1 end] \
+            $invalidCode $invalidMessage \
+            [llength $::RunnerMock::calls]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    "sandboxed Tcl output" \
+    [list plan --max-count 100 --oneline --no-color --no-headers] \
+    "sandboxed Tcl output" \
+    [list plan --max-count 12 --oneline --no-color --no-headers] \
+    1 "sqitch_plan limit must be an integer from 1 to 500" 2]
+
+test sqitch-show-1.1 {Sqitch show restricts views and object identifiers} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] sqitch-show-[pid]]]
+    file mkdir $root
+    set fakeSqitch [file join $root sqitch]
+    set channel [open $fakeSqitch w]
+    puts $channel {#!/bin/sh}
+    close $channel
+    file attributes $fakeSqitch -permissions 0755
+
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute \
+        [dict create sqitch $fakeSqitch]]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" $runner]
+    try {
+        set defaultResult [$plugins invoke sqitch_show [::json::write object \
+            object [::json::write string add_users]]]
+        set scriptResult [$plugins invoke sqitch_show [::json::write object \
+            object [::json::write string add_users@HEAD] \
+            view [::json::write string deploy]]]
+        set invalidResults {}
+        foreach arguments [list \
+            [::json::write object object [::json::write string --target]] \
+            [::json::write object object [::json::write string add_users] \
+                view [::json::write string config]]] {
+            lappend invalidResults [catch {
+                $plugins invoke sqitch_show $arguments
+            } message] $message
+        }
+        list \
+            $defaultResult \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            $scriptResult \
+            [lrange [lindex [lindex $::RunnerMock::calls 1] 0] 1 end] \
+            $invalidResults [llength $::RunnerMock::calls]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    "sandboxed Tcl output" [list show change add_users] \
+    "sandboxed Tcl output" [list show deploy add_users@HEAD] \
+    [list \
+        1 "sqitch_show object contains unsupported characters" \
+        1 "sqitch_show view must be one of: change, tag, deploy, revert, verify"] \
+    2]
+
+test sqitch-revert-1.1 {Sqitch revert requires a destination and approval} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] sqitch-revert-[pid]]]
+    file mkdir $root
+    set fakeSqitch [file join $root sqitch]
+    set channel [open $fakeSqitch w]
+    puts $channel {#!/bin/sh}
+    close $channel
+    file attributes $fakeSqitch -permissions 0755
+
+    set ::RunnerMock::calls {}
+    set ::ApprovalMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute \
+        [dict create sqitch $fakeSqitch]]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set validArguments [::json::write object \
+        to [::json::write string @v1.0]]
+    try {
+        set invalidCode [catch {
+            $plugins invoke sqitch_revert [::json::write object \
+                to [::json::write string --all]]
+        } invalidMessage]
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke sqitch_revert $validArguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke sqitch_revert $validArguments]
+        list \
+            $invalidCode $invalidMessage \
+            $deniedCode $deniedMessage $result \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            [llength $::RunnerMock::calls]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "sqitch_revert destination contains unsupported characters" \
+    1 "Plugin execution denied: sqitch_revert" \
+    "sandboxed Tcl output" \
+    [list revert --to-change @v1.0 -y] 1]
+
+test sqitch-rework-1.1 {Sqitch rework validates inputs and requires approval} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] sqitch-rework-[pid]]]
+    file mkdir $root
+    set fakeSqitch [file join $root sqitch]
+    set channel [open $fakeSqitch w]
+    puts $channel {#!/bin/sh}
+    close $channel
+    file attributes $fakeSqitch -permissions 0755
+
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute \
+        [dict create sqitch $fakeSqitch]]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set validArguments [::json::write object \
+        change [::json::write string users_view] \
+        note [::json::write string "Revise the users view"]]
+    try {
+        set ::ApprovalMock::approved 1
+        set invalidCode [catch {
+            $plugins invoke sqitch_rework [::json::write object \
+                change [::json::write string users/view] \
+                note [::json::write string test]]
+        } invalidMessage]
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke sqitch_rework $validArguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke sqitch_rework $validArguments]
+        list \
+            $invalidCode $invalidMessage \
+            $deniedCode $deniedMessage $result \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            [llength $::RunnerMock::calls]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "sqitch_rework change contains unsupported characters" \
+    1 "Plugin execution denied: sqitch_rework" \
+    "sandboxed Tcl output" \
+    [list rework --change users_view --note "Revise the users view" \
+        --no-all --no-edit] 1]
+
+test sqitch-tag-1.1 {Sqitch tag names an explicit change and requires approval} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] sqitch-tag-[pid]]]
+    file mkdir $root
+    set fakeSqitch [file join $root sqitch]
+    set channel [open $fakeSqitch w]
+    puts $channel {#!/bin/sh}
+    close $channel
+    file attributes $fakeSqitch -permissions 0755
+
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute \
+        [dict create sqitch $fakeSqitch]]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set validArguments [::json::write object \
+        tag [::json::write string v1.0] \
+        change [::json::write string @HEAD] \
+        note [::json::write string "Release version 1.0"]]
+    try {
+        set ::ApprovalMock::approved 1
+        set invalidCode [catch {
+            $plugins invoke sqitch_tag [::json::write object \
+                tag [::json::write string @v1.0] \
+                change [::json::write string @HEAD] \
+                note [::json::write string test]]
+        } invalidMessage]
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke sqitch_tag $validArguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke sqitch_tag $validArguments]
+        list \
+            $invalidCode $invalidMessage \
+            $deniedCode $deniedMessage $result \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            [llength $::RunnerMock::calls]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "sqitch_tag tag contains unsupported characters" \
+    1 "Plugin execution denied: sqitch_tag" \
+    "sandboxed Tcl output" \
+    [list tag --tag v1.0 --change @HEAD --note "Release version 1.0" \
+        --no-all] 1]
 
 test sqitch-verify-1.1 {Sqitch verify is fixed and approval-gated} -body {
     set root [file normalize [file join \
