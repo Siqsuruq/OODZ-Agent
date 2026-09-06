@@ -288,7 +288,7 @@ proc ::oodzGui::saveWorkspaceInstructions {} {
         try {
             puts -nonewline $channel $bytes
         } finally {
-            close $channel
+            ::close $channel
         }
         ::oodzGui::refreshSystemRole
     } message]} {
