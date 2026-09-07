@@ -410,5 +410,35 @@ test process-runner-cancel-1.1 {active Tcl process can be stopped} -body {
     }
 } -result [list cancelled "" 1]
 
+test process-runner-directory-1.1 {configured Fossil checkout is fixed centrally} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-directory-[pid]]]
+    set checkout [file join $root tpm]
+    file mkdir $checkout
+    set fakeFossil [file join $root fossil]
+    set channel [open $fakeFossil w]
+    puts $channel {#!/bin/sh}
+    close $channel
+    file attributes $fakeFossil -permissions 0755
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new $root tclsh9.0 2500 4096 \
+        ::RunnerMock::execute [dict create fossil $fakeFossil] \
+        [dict create fossil $checkout]]
+    try {
+        $runner runConfiguredCommand fossil [list status]
+        $runner runConfiguredCommand fossil [list clone \
+            https://example.test/repo repo.fossil --workdir repo]
+        list \
+            [lrange [lindex [lindex $::RunnerMock::calls 0] 0] 1 end] \
+            [lrange [lindex [lindex $::RunnerMock::calls 1] 0] 1 end]
+    } finally {
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    [list --chdir [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-directory-[pid] tpm]] status] \
+    [list clone https://example.test/repo repo.fossil --workdir repo]]
+
 
 ::finishTests

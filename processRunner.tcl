@@ -5,11 +5,13 @@
     variable projectTestsEnabled projectTestsExecutable
     variable projectTestsArguments projectTestsTimeout
     variable executableAliases
+    variable commandDirectories
 
     constructor {
         configuredWorkspaceRoot configuredTclExecutable
         configuredTimeoutMs configuredMaxOutput
         {configuredExecutor ""} {configuredExecutableAliases {}}
+        {configuredCommandDirectories {}}
     } {
         set workspaceRoot [file normalize $configuredWorkspaceRoot]
         if {![file isdirectory $workspaceRoot]} {
@@ -33,6 +35,18 @@
             error "Executable aliases must be a dictionary"
         }
         set executableAliases $configuredExecutableAliases
+        if {[catch {dict size $configuredCommandDirectories}]} {
+            error "Configured command directories must be a dictionary"
+        }
+        set commandDirectories [dict create]
+        dict for {name directory} $configuredCommandDirectories {
+            set directory [file normalize $directory]
+            if {![::PluginSupport::isWithin $directory $workspaceRoot]
+                    || ![file isdirectory $directory]} {
+                error "Configured command directory is outside the workspace or missing: $name"
+            }
+            dict set commandDirectories $name $directory
+        }
         set channel ""
         set projectTestsEnabled 0
         set projectTestsExecutable ""
@@ -115,7 +129,13 @@
         }
         set executable [my resolveExecutable \
             $configuredExecutable "Plugin executable"]
-        set command [list $executable {*}$arguments]
+        set prefix {}
+        if {[dict exists $commandDirectories $executableName]
+                && [lindex $arguments 0] ne "clone"} {
+            set prefix [list --chdir \
+                [dict get $commandDirectories $executableName]]
+        }
+        set command [list $executable {*}$prefix {*}$arguments]
         if {$executor ne ""} {
             return [{*}$executor $command $timeoutMs $maxOutput]
         }

@@ -283,6 +283,24 @@ proc ::resolveOptionalReferenceRoot {scriptDir configuredRoot settingName} {
     return $root
 }
 
+proc ::configuredCommandDirectories {config workspaceRoot} {
+    set checkout [string trim [$config get Fossil.checkout ""]]
+    if {$checkout eq ""} {
+        return {}
+    }
+    if {[file pathtype $checkout] ne "relative"} {
+        error "Fossil.checkout must be relative to Workspace.root"
+    }
+    set resolved [file normalize [file join $workspaceRoot $checkout]]
+    if {![::PluginSupport::isWithin $resolved $workspaceRoot]} {
+        error "Fossil.checkout escapes Workspace.root"
+    }
+    if {![file isdirectory $resolved]} {
+        error "Fossil.checkout is not an existing directory: $checkout"
+    }
+    return [dict create fossil $resolved]
+}
+
 proc ::terminalStyleEnabled {channel} {
     if {$channel ni {stdout stderr}} {
         return 0
@@ -709,12 +727,15 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
             error "Runner.enabled must be boolean"
         }
         set projectTestsEnabled false
+        set commandDirectories [::configuredCommandDirectories \
+            $config $workspaceRoot]
         if {$runnerEnabled} {
             set processRunner [tProcessRunner new $workspaceRoot \
                 [$config get Runner.tclsh tclsh9.0] \
                 [$config get Runner.timeout_ms 10000] \
                 [$config get Runner.max_output_chars 65536] "" \
-                [dict create fossil [$config get Executables.fossil fossil]]]
+                [dict create fossil [$config get Executables.fossil fossil]] \
+                $commandDirectories]
             set projectTestsEnabled [$config get Runner.project_tests_enabled false]
             if {![string is boolean -strict $projectTestsEnabled]} {
                 error "Runner.project_tests_enabled must be boolean"
@@ -769,6 +790,7 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
                 max_output_chars [$config get Runner.max_output_chars 65536] \
                 executable_aliases [dict create fossil \
                     [$config get Executables.fossil fossil]] \
+                command_directories $commandDirectories \
                 project_tests_enabled $projectTestsEnabled \
                 project_tests_executable \
                     [$config get Runner.project_tests_executable tclsh9.0] \

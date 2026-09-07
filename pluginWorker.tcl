@@ -48,7 +48,8 @@ package require Thread 3.0
                             [dict get $runnerConfig timeout_ms] \
                             [dict get $runnerConfig max_output_chars] \
                             "" \
-                            [dict get $runnerConfig executable_aliases]]
+                            [dict get $runnerConfig executable_aliases] \
+                            [dict getdef $runnerConfig command_directories {}]]
                         if {[dict exists $runnerConfig project_tests_enabled]
                                 && [dict get $runnerConfig \
                                     project_tests_enabled]} {

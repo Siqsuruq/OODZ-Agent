@@ -923,8 +923,10 @@ proc ::oodzGui::start {} {
         error "Runner.enabled must be boolean"
     }
     set projectTestsEnabled false
+    set commandDirectories [::configuredCommandDirectories \
+        $config $workspaceRoot]
     if {$runnerEnabled} {
-        set processRunner [tProcessRunner new $workspaceRoot [$config get Runner.tclsh tclsh9.0] [$config get Runner.timeout_ms 10000] [$config get Runner.max_output_chars 65536] "" [dict create fossil [$config get Executables.fossil fossil]]]
+        set processRunner [tProcessRunner new $workspaceRoot [$config get Runner.tclsh tclsh9.0] [$config get Runner.timeout_ms 10000] [$config get Runner.max_output_chars 65536] "" [dict create fossil [$config get Executables.fossil fossil]] $commandDirectories]
         set projectTestsEnabled [$config get Runner.project_tests_enabled false]
         if {![string is boolean -strict $projectTestsEnabled]} {
             error "Runner.project_tests_enabled must be boolean"
@@ -970,6 +972,7 @@ proc ::oodzGui::start {} {
     if {$workerEnabled} {
         set runnerConfig [dict create enabled $runnerEnabled tclsh [$config get Runner.tclsh tclsh9.0] timeout_ms [$config get Runner.timeout_ms 10000] max_output_chars [$config get Runner.max_output_chars 65536] \
             executable_aliases [dict create fossil [$config get Executables.fossil fossil]] project_tests_enabled $projectTestsEnabled project_tests_executable [$config get Runner.project_tests_executable tclsh9.0] \
+            command_directories $commandDirectories \
             project_tests_arguments [$config get Runner.project_tests_arguments tests/all.tcl] project_tests_timeout_ms [$config get Runner.project_tests_timeout_ms 60000]]
         set pluginWorker [tPluginWorker new $scriptDir $workspaceRoot $pluginDirectories [$config get Plugins.timeout_ms 1000] [$config get Plugins.max_output_chars 65536] $referenceRoots $runnerConfig]
     }

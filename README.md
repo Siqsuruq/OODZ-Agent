@@ -526,10 +526,21 @@ all bundled Fossil plugins resolve their logical `fossil` command through it:
 ```ini
 [Executables]
 fossil = C:/Tools/Fossil/fossil.exe
+
+[Fossil]
+# Relative to Workspace.root; leave empty when the workspace is the checkout.
+checkout = tpm
 ```
 
 Use forward slashes for Windows paths. The default value `fossil` resolves
 through `PATH`.
+
+When `Fossil.checkout` is set, every Fossil plugin except `fossil_clone`
+executes with Fossil's global `--chdir` option inside that one trusted checkout.
+For example, `Workspace.root = /home/max/projects` and `Fossil.checkout = tpm`
+targets `/home/max/projects/tpm` while keeping the broader directory available
+to filesystem tools. The value must be relative, remain inside the workspace,
+and name an existing directory. Configuration is loaded at startup.
 
 The read-only `fossil_diff` plugin uses Fossil's internal unified diff engine,
 preventing a checkout setting from selecting an external diff program. With no
@@ -1020,7 +1031,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 173 Passed 173 Skipped 0 Failed 0
+all.tcl: Total 174 Passed 174 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the
