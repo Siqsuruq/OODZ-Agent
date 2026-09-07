@@ -632,6 +632,10 @@ proc ::oodzGui::showTools {} {
     ttk::frame .tools.right.form
     ttk::label .tools.right.resultLabel -text "Result"
     text .tools.right.result -height 10 -wrap word -state disabled -padx 8 -pady 8
+    ttk::scrollbar .tools.right.resultScroll -orient vertical \
+        -command [list .tools.right.result yview]
+    .tools.right.result configure \
+        -yscrollcommand [list .tools.right.resultScroll set]
     .tools.right.result tag configure error -foreground #c62828
     ttk::button .tools.right.run -text "Run tool" -state disabled -command ::oodzGui::runSelectedTool
     ttk::button .tools.right.close -text "Close" -command [list destroy .tools]
@@ -643,11 +647,12 @@ proc ::oodzGui::showTools {} {
     grid .tools.right -row 0 -column 1 -sticky nsew
     grid .tools.left.names -row 0 -column 0 -sticky nsew
     grid .tools.left.namesScroll -row 0 -column 1 -sticky ns
-    grid .tools.right.description -row 0 -column 0 -columnspan 2 -sticky ew -pady {0 10}
-    grid .tools.right.argumentsLabel -row 1 -column 0 -columnspan 2 -sticky w
-    grid .tools.right.form -row 2 -column 0 -columnspan 2 -sticky nsew -pady {4 10}
-    grid .tools.right.resultLabel -row 3 -column 0 -columnspan 2 -sticky w
+    grid .tools.right.description -row 0 -column 0 -columnspan 3 -sticky ew -pady {0 10}
+    grid .tools.right.argumentsLabel -row 1 -column 0 -columnspan 3 -sticky w
+    grid .tools.right.form -row 2 -column 0 -columnspan 3 -sticky nsew -pady {4 10}
+    grid .tools.right.resultLabel -row 3 -column 0 -columnspan 3 -sticky w
     grid .tools.right.result -row 4 -column 0 -columnspan 2 -sticky nsew -pady {4 10}
+    grid .tools.right.resultScroll -row 4 -column 2 -sticky ns -pady {4 10}
     grid .tools.right.run -row 5 -column 0 -sticky w
     grid .tools.right.close -row 5 -column 1 -sticky e
     grid rowconfigure .tools 0 -weight 1
@@ -659,6 +664,7 @@ proc ::oodzGui::showTools {} {
     }
     grid columnconfigure .tools.right 0 -weight 1
     grid columnconfigure .tools.right 1 -weight 1
+    grid columnconfigure .tools.right 2 -weight 0
     bind .tools.left.names <<ListboxSelect>> ::oodzGui::selectTool
     if {[.tools.left.names size] > 0} {
         .tools.left.names selection set 0
