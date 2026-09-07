@@ -381,9 +381,10 @@ proc ::oodzGui::editWorkspaceInstructions {} {
     .instructions.editor insert 1.0 $content
     ttk::label .instructions.status \
         -text "These instructions are added to every model request."
-    ttk::button .instructions.save -text "Save" \
+    ttk::frame .instructions.actions
+    ttk::button .instructions.actions.save -text "Save" \
         -command ::oodzGui::saveWorkspaceInstructions
-    ttk::button .instructions.close -text "Close" \
+    ttk::button .instructions.actions.close -text "Close" \
         -command [list destroy .instructions]
     grid .instructions.path -row 0 -column 0 -columnspan 2 \
         -sticky ew -padx 12 -pady {12 8}
@@ -391,10 +392,10 @@ proc ::oodzGui::editWorkspaceInstructions {} {
     grid .instructions.scroll -row 1 -column 1 -sticky ns -padx {0 12}
     grid .instructions.status -row 2 -column 0 -columnspan 2 \
         -sticky w -padx 12 -pady 8
-    grid .instructions.save -row 3 -column 0 -sticky w \
-        -padx 12 -pady {0 12}
-    grid .instructions.close -row 3 -column 1 -sticky e \
-        -padx 12 -pady {0 12}
+    grid .instructions.actions -row 3 -column 0 -columnspan 2 \
+        -sticky ew -padx 12 -pady {0 12}
+    pack .instructions.actions.save -side left
+    pack .instructions.actions.close -side right
     grid rowconfigure .instructions 1 -weight 1
     grid columnconfigure .instructions 0 -weight 1
     bind .instructions.editor <Control-s> {
