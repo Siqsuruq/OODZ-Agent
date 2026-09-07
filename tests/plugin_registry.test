@@ -75,6 +75,26 @@ test plugins-lazy-1.1a {GUI-style discovery can request all definitions} -body {
     }
 } -result [list 1 1 1]
 
+test plugins-metadata-1.0 {installed plugin definitions expose categories} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    try {
+        set categories [dict create]
+        foreach definition [$registry definitions true] {
+            if {[dict exists $definition category]} {
+                dict set categories [dict get $definition name] \
+                    [dict get $definition category]
+            }
+        }
+        list \
+            [dict get $categories fossil_status] \
+            [dict get $categories sqitch_plan] \
+            [dict get $categories web_search]
+    } finally {
+        $registry destroy
+    }
+} -result [list vcs database web]
+
 test plugins-lazy-1.2 {lazy search validates query and result limit} -body {
     set registry [::tPluginRegistry new \
         $projectDir [list [file join $projectDir plugins]] \

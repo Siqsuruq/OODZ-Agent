@@ -413,11 +413,16 @@ proc ::oodzGui::showAbout {} {
 
 proc ::oodzGui::selectTool {} {
     variable toolDefinitions
-    set selection [.tools.left.names curselection]
+    set selection [.tools.left.names selection]
     if {[llength $selection] != 1} {
         return
     }
-    set name [.tools.left.names get [lindex $selection 0]]
+    set item [lindex $selection 0]
+    set name [.tools.left.names set $item name]
+    if {$name eq ""} {
+        .tools.right.run configure -state disabled
+        return
+    }
     set definition [dict get $toolDefinitions $name]
     .tools.right.description configure -text [dict get $definition description]
     .tools.right.run configure -text [expr {$name eq "save_translation"
@@ -561,11 +566,14 @@ proc ::oodzGui::toolFormArguments {} {
 proc ::oodzGui::runSelectedTool {} {
     variable registry
     variable busy
-    set selection [.tools.left.names curselection]
+    set selection [.tools.left.names selection]
     if {$busy || [llength $selection] != 1} {
         return
     }
-    set name [.tools.left.names get [lindex $selection 0]]
+    set name [.tools.left.names set [lindex $selection 0] name]
+    if {$name eq ""} {
+        return
+    }
     if {[catch {::oodzGui::toolFormArguments} arguments]} {
         .tools.right.result configure -state normal
         .tools.right.result delete 1.0 end
@@ -624,7 +632,8 @@ proc ::oodzGui::showTools {} {
 
     ttk::frame .tools.left -padding 8
     ttk::frame .tools.right -padding 8
-    listbox .tools.left.names -exportselection false -width 24
+    ttk::treeview .tools.left.names -show tree -selectmode browse \
+        -columns [list name] -displaycolumns {} -height 20
     ttk::scrollbar .tools.left.namesScroll -orient vertical -command [list .tools.left.names yview]
     .tools.left.names configure -yscrollcommand [list .tools.left.namesScroll set]
     ttk::label .tools.right.description -text "Select a tool" -anchor nw -justify left -wraplength 500
@@ -640,8 +649,24 @@ proc ::oodzGui::showTools {} {
     ttk::button .tools.right.run -text "Run tool" -state disabled -command ::oodzGui::runSelectedTool
     ttk::button .tools.right.close -text "Close" -command [list destroy .tools]
 
-    foreach name [lsort [dict keys $toolDefinitions]] {
-        .tools.left.names insert end $name
+    set categoryTitles [dict create \
+        database "Database" filesystem "Filesystem" vcs "Version Control" \
+        web "Web" utility "Utilities" system "System" \
+        execution "Execution" skills "Skills" other "Other"]
+    set categories [dict create]
+    dict for {name definition} $toolDefinitions {
+        set category [dict getdef $definition category other]
+        dict lappend categories $category $name
+    }
+    foreach category [lsort [dict keys $categories]] {
+        set title [dict getdef $categoryTitles $category \
+            [string totitle [string map {_ " " - " "} $category]]]
+        set parent [.tools.left.names insert {} end \
+            -id "category:$category" -text $title -open true]
+        foreach name [lsort [dict get $categories $category]] {
+            .tools.left.names insert $parent end -id "tool:$name" \
+                -text $name -values [list $name]
+        }
     }
     grid .tools.left -row 0 -column 0 -sticky nsew
     grid .tools.right -row 0 -column 1 -sticky nsew
@@ -666,9 +691,14 @@ proc ::oodzGui::showTools {} {
     grid columnconfigure .tools.right 1 -weight 1
     grid columnconfigure .tools.right 2 -weight 0
     bind .tools.left.names <<ListboxSelect>> ::oodzGui::selectTool
-    if {[.tools.left.names size] > 0} {
-        .tools.left.names selection set 0
-        ::oodzGui::selectTool
+    set firstCategory [lindex [.tools.left.names children {}] 0]
+    if {$firstCategory ne ""} {
+        set firstTool [lindex [.tools.left.names children $firstCategory] 0]
+        if {$firstTool ne ""} {
+            .tools.left.names selection set $firstTool
+            .tools.left.names see $firstTool
+            ::oodzGui::selectTool
+        }
     }
 }
 

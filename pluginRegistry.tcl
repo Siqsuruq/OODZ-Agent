@@ -530,6 +530,7 @@ namespace eval ::PluginSupport {
             set plugin [dict get $plugins $name]
             lappend definitions [dict create \
                 name $name \
+                category [dict get $plugin category] \
                 description [dict get $plugin description] \
                 parameters [dict get $plugin parameters_schema] \
                 parameters_json [dict get $plugin parameters]]

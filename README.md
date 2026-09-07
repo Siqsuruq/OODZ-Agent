@@ -765,7 +765,8 @@ automatic retry or fallback for that request. Assistant Markdown is styled while
 without reparsing the entire conversation. Its Tools dialog lists every
 installed tool, displays its description, generates argument fields from its
 schema, and invokes it locally without requiring hand-written JSON or calling
-the LLM. String and numeric fields use entries, booleans use checkboxes, enums
+the LLM. Tools are grouped in an expandable tree using each manifest's single
+`category` value. String and numeric fields use entries, booleans use checkboxes, enums
 use dropdowns, and nested object/array fields accept JSON values. The
 `save_translation` form is model-assisted: it asks only for the original label,
 then the LLM produces all required native-script translations and invokes the
@@ -1031,7 +1032,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 174 Passed 174 Skipped 0 Failed 0
+all.tcl: Total 175 Passed 175 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the
