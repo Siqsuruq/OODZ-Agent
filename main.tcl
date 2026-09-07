@@ -443,6 +443,35 @@ proc ::readInteractiveLine {inputChannel outputChannel prompt} {
     return [list [gets $inputChannel line] $line]
 }
 
+proc ::parseDirectToolCommand {line} {
+    if {![regexp {^/tool(?:[[:space:]]|$)} $line]} {
+        error "Not a direct tool command"
+    }
+    set invocation [string trim [string range $line 5 end]]
+    if {$invocation eq ""
+            || ![regexp {^(\S+)(?:[[:space:]]+(.*))?$} \
+                $invocation -> toolName toolArguments]} {
+        error "Usage: /tool name ?JSON arguments?"
+    }
+    if {![info exists toolArguments]
+            || [string trim $toolArguments] eq ""} {
+        set toolArguments "{}"
+    }
+    return [list $toolName $toolArguments]
+}
+
+proc ::buildTranslationTask {label} {
+    set label [string trim $label]
+    if {$label eq ""} {
+        error "Translation label must not be empty"
+    }
+    join [list \
+        "Translate the label '$label' into native-script" \
+        "Portuguese, Simplified Chinese, Russian, French, Spanish," \
+        "and English, then save it using save_translation." \
+        "Never transliterate any language."] " "
+}
+
 proc ::runInteractive {
     agent pluginRegistry skillRegistry historyStore logPath \
     inputChannel outputChannel errorChannel {changeTracker ""}
@@ -498,22 +527,17 @@ proc ::runInteractive {
                 puts $errorChannel [::styleTerminalText $errorChannel "Usage: /oodz_trns label" {fg red}]
                 continue
             }
-            set translationLabel [string trim $translationLabel]
-            set line [join [list "Translate the label '$translationLabel' into native-script" "Portuguese, Simplified Chinese, Russian, French, Spanish," "and English, then save it using save_translation." "Never transliterate any language."] " "]
+            set line [::buildTranslationTask $translationLabel]
         }
 
         if {[regexp {^/tool(?:[[:space:]]|$)} $line]} {
-            set invocation [string trim [string range $line 5 end]]
-            if {$invocation eq ""} {
-                puts $errorChannel [::styleTerminalText $errorChannel "Usage: /tool name ?JSON arguments?" {fg red}]
+            if {[catch {
+                lassign [::parseDirectToolCommand $line] \
+                    toolName toolArguments
+            } parseError]} {
+                puts $errorChannel [::styleTerminalText $errorChannel \
+                    $parseError {fg red}]
                 continue
-            }
-            if {![regexp {^(\S+)(?:[[:space:]]+(.*))?$} $invocation -> toolName toolArguments]} {
-                puts $errorChannel [::styleTerminalText $errorChannel "Usage: /tool name ?JSON arguments?" {fg red}]
-                continue
-            }
-            if {![info exists toolArguments] || [string trim $toolArguments] eq ""} {
-                set toolArguments "{}"
             }
             if {[catch {
                 $pluginRegistry invoke $toolName $toolArguments

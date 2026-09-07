@@ -737,9 +737,11 @@ instructions become active on the next request without restarting the agent or
 clearing its conversation. Stop aborts an active model HTTP request and prevents
 automatic retry or fallback for that request. Assistant Markdown is styled while it streams
 without reparsing the entire conversation. Its Tools dialog lists every
-available tool, displays its description and JSON argument schema, and can
-invoke it locally without calling the LLM.
-Press `Ctrl+Enter` to send a prompt or run a selected tool. It uses the same
+installed tool, displays its description, generates argument fields from its
+schema, and invokes it locally without requiring hand-written JSON or calling
+the LLM. String and numeric fields use entries, booleans use checkboxes, enums
+use dropdowns, and nested object/array fields accept JSON values.
+Press `Ctrl+Enter` to send a prompt. It uses the same
 configuration, workspace, plugins, and OODZ reference as the terminal interface.
 
 The same agent remains active across prompts, so conversation and tool history
@@ -753,7 +755,8 @@ produces it. Interactive commands:
 - `/tool name ?JSON?`: Run a plugin locally without calling DeepSeek. Arguments
   default to `{}` when omitted.
 - `/oodz_trns label`: Translate a label into all configured native-language
-  scripts and save it through `save_translation`.
+  scripts and save it through `save_translation`. Supported in both the terminal
+  and GUI.
 - `/history`: Display the current conversation.
 - `/logs`: Display the latest 20 diagnostic log entries.
 - `/new`: Clear history and start a new conversation.
@@ -781,7 +784,8 @@ For example:
 ```
 
 Direct tool calls use the same schemas, workspace confinement, execution limits,
-and write approvals as model-selected calls.
+and write approvals as model-selected calls. Both the terminal and GUI intercept
+`/tool` locally; the command is never sent to the LLM.
 
 `sqitch_add` adds one validated change name to the default plan and generates
 the standard scripts from the project's configured templates. A non-empty note
@@ -998,7 +1002,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 169 Passed 169 Skipped 0 Failed 0
+all.tcl: Total 172 Passed 172 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the

@@ -1,10 +1,7 @@
 namespace eval ::plugins::save_translation {
-    variable endpoint \
-        https://dev.daidze.org/api/v2/translate/add_new_line
-    variable successRedirect \
-        https://dev.daidze.org/index.adp?mod=translate&xml=main.xml
-    variable successRedirectPath \
-        /index.adp?mod=translate&xml=main.xml
+    variable endpoint https://dev.daidze.org/api/v2/translate/add_new_line
+    variable successRedirect https://dev.daidze.org/index.adp?mod=translate&xml=main.xml
+    variable successRedirectPath /index.adp?mod=translate&xml=main.xml
     variable requestTimeout 8000
 }
 

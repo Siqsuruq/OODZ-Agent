@@ -449,9 +449,9 @@ namespace eval ::PluginSupport {
         return $unavailablePlugins
     }
 
-    method definitions {} {
+    method definitions {{includeInactive false}} {
         set definitions {}
-        if {$lazyLoading} {
+        if {$lazyLoading && !$includeInactive} {
             set visibleNames [my specialNames]
             lappend visibleNames search_plugins
             dict for {name enabled} $activePlugins {

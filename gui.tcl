@@ -22,6 +22,8 @@ namespace eval ::oodzGui {
     variable approvalResult 0
     variable busy 0
     variable toolDefinitions [dict create]
+    variable toolFields {}
+    variable toolFieldValues
     variable contextWidget ""
     variable darkTheme 0
 	variable streamCount 0
@@ -145,6 +147,7 @@ proc ::oodzGui::send {} {
     variable agent
     variable busy
     variable changeTracker
+    variable registry
     if {$busy} {
         return
     }
@@ -152,12 +155,39 @@ proc ::oodzGui::send {} {
     if {$task eq ""} {
         return
     }
+    set displayedTask $task
+    if {[regexp {^/oodz_trns(?:[[:space:]]+(.*))?$} \
+            $task -> translationLabel]} {
+        if {![info exists translationLabel]
+                || [string trim $translationLabel] eq ""} {
+            .input delete 1.0 end
+            ::oodzGui::appendMessage Error "Usage: /oodz_trns label"
+            focus .input
+            return
+        }
+        set task [::buildTranslationTask $translationLabel]
+    }
+    if {[regexp {^/tool(?:[[:space:]]|$)} $task]} {
+        .input delete 1.0 end
+        ::oodzGui::appendMessage You $task
+        if {[catch {
+            lassign [::parseDirectToolCommand $task] toolName toolArguments
+            $registry invoke $toolName $toolArguments
+        } result]} {
+            ::oodzGui::appendMessage Error "Tool error: $result"
+        } else {
+            ::oodzGui::appendMessage Tool $result
+        }
+        .status configure -text "Ready"
+        focus .input
+        return
+    }
     set busy 1
     .input delete 1.0 end
     .send configure -state disabled
     .stop configure -state normal
     .status configure -text "Working…"
-    ::oodzGui::appendMessage You $task
+    ::oodzGui::appendMessage You $displayedTask
     .conversation configure -state normal
     .conversation insert end "Assistant\n" assistantLabel
     .conversation configure -state disabled
@@ -389,16 +419,134 @@ proc ::oodzGui::selectTool {} {
     set name [.tools.left.names get [lindex $selection 0]]
     set definition [dict get $toolDefinitions $name]
     .tools.right.description configure -text [dict get $definition description]
-    .tools.right.schema configure -state normal
-    .tools.right.schema delete 1.0 end
-    .tools.right.schema insert end [dict get $definition parameters_json]
-    .tools.right.schema configure -state disabled
-    .tools.right.arguments delete 1.0 end
-    .tools.right.arguments insert end "{}"
+    ::oodzGui::buildToolForm $definition
     .tools.right.result configure -state normal
     .tools.right.result delete 1.0 end
     .tools.right.result configure -state disabled
     .tools.right.run configure -state normal
+}
+
+proc ::oodzGui::buildToolForm {definition} {
+    variable toolFields
+    variable toolFieldValues
+    set toolFields {}
+    array unset toolFieldValues
+    foreach child [winfo children .tools.right.form] {
+        destroy $child
+    }
+
+    set schema [dict get $definition parameters]
+    set properties [dict getdef $schema properties {}]
+    set required [dict getdef $schema required {}]
+    if {[dict size $properties] == 0} {
+        ttk::label .tools.right.form.none -text "This tool has no arguments."
+        grid .tools.right.form.none -row 0 -column 0 -sticky w -pady 6
+        return
+    }
+
+    set row 0
+    dict for {name property} $properties {
+        set type [dict getdef $property type string]
+        set isRequired [expr {$name in $required}]
+        set label [expr {$isRequired ? "$name *" : $name}]
+        ttk::label .tools.right.form.label$row -text $label -anchor nw
+        set variableName ::oodzGui::toolFieldValues($row)
+        set toolFieldValues($row) [dict getdef $property default ""]
+        set mode variable
+
+        if {[dict exists $property enum]} {
+            ttk::combobox .tools.right.form.value$row -state readonly \
+                -textvariable $variableName \
+                -values [linsert [dict get $property enum] 0 ""]
+        } elseif {$type eq "boolean"} {
+            set toolFieldValues($row) [expr {
+                [dict exists $property default]
+                && [dict get $property default] ? 1 : 0}]
+            ttk::checkbutton .tools.right.form.value$row \
+                -variable $variableName
+        } elseif {$type eq "string"
+                && $name in {content patch old_text new_text json note}} {
+            set mode text
+            text .tools.right.form.value$row -height 3 -wrap word \
+                -padx 6 -pady 4
+            if {$toolFieldValues($row) ne ""} {
+                .tools.right.form.value$row insert 1.0 $toolFieldValues($row)
+            }
+        } else {
+            ttk::entry .tools.right.form.value$row \
+                -textvariable $variableName
+        }
+        set description [dict getdef $property description ""]
+        if {$type in {object array}} {
+            append description [expr {
+                $description eq "" ? "JSON value." : " (JSON value)"}]
+        }
+        ttk::label .tools.right.form.help$row -text $description \
+            -anchor nw -justify left -wraplength 440
+        grid .tools.right.form.label$row -row $row -column 0 \
+            -sticky nw -padx {0 8} -pady 4
+        grid .tools.right.form.value$row -row $row -column 1 \
+            -sticky ew -pady 4
+        grid .tools.right.form.help$row -row [incr row] -column 1 \
+            -sticky ew -pady {0 5}
+        lappend toolFields [dict create name $name type $type \
+            required $isRequired mode $mode index [expr {$row - 1}]]
+        incr row
+    }
+    grid columnconfigure .tools.right.form 1 -weight 1
+}
+
+proc ::oodzGui::toolFormArguments {} {
+    variable toolFields
+    variable toolFieldValues
+    set fields {}
+    foreach field $toolFields {
+        set index [dict get $field index]
+        if {[dict get $field mode] eq "text"} {
+            set value [.tools.right.form.value$index get 1.0 end-1c]
+        } else {
+            set value $toolFieldValues($index)
+        }
+        set type [dict get $field type]
+        set name [dict get $field name]
+        if {$type ne "boolean" && $value eq ""} {
+            if {[dict get $field required]} {
+                error "Required argument is empty: $name"
+            }
+            continue
+        }
+        switch -- $type {
+            integer {
+                if {![string is entier -strict $value]} {
+                    error "$name must be an integer"
+                }
+                set encoded $value
+            }
+            number {
+                if {![string is double -strict $value]} {
+                    error "$name must be a number"
+                }
+                set encoded $value
+            }
+            boolean {
+                set encoded [expr {$value ? "true" : "false"}]
+            }
+            object - array {
+                set trimmed [string trim $value]
+                set expected [expr {$type eq "object" ? "\{" : "\["}]
+                if {$trimmed eq "" || [string index $trimmed 0] ne $expected
+                        || [catch {::json::json2dict $trimmed}]} {
+                    error "$name must contain a valid JSON $type"
+                }
+                set encoded $trimmed
+            }
+            default {
+                set encoded [::json::write string $value]
+            }
+        }
+        lappend fields $name $encoded
+    }
+    ::json::write object {*}$fields
 }
 
 proc ::oodzGui::runSelectedTool {} {
@@ -409,9 +557,12 @@ proc ::oodzGui::runSelectedTool {} {
         return
     }
     set name [.tools.left.names get [lindex $selection 0]]
-    set arguments [string trim [.tools.right.arguments get 1.0 end-1c]]
-    if {$arguments eq ""} {
-        set arguments "{}"
+    if {[catch {::oodzGui::toolFormArguments} arguments]} {
+        .tools.right.result configure -state normal
+        .tools.right.result delete 1.0 end
+        .tools.right.result insert end "Error: $arguments" error
+        .tools.right.result configure -state disabled
+        return
     }
     set busy 1
     .tools.right.run configure -state disabled
@@ -442,7 +593,9 @@ proc ::oodzGui::showTools {} {
     variable toolDefinitions
     catch {destroy .tools}
     set toolDefinitions [dict create]
-    foreach definition [$registry definitions] {
+    # A human browsing the Tools window should see every installed plugin;
+    # lazy loading limits model context, not the GUI catalog.
+    foreach definition [$registry definitions true] {
         dict set toolDefinitions [dict get $definition name] $definition
     }
 
@@ -457,10 +610,8 @@ proc ::oodzGui::showTools {} {
     ttk::scrollbar .tools.left.namesScroll -orient vertical -command [list .tools.left.names yview]
     .tools.left.names configure -yscrollcommand [list .tools.left.namesScroll set]
     ttk::label .tools.right.description -text "Select a tool" -anchor nw -justify left -wraplength 500
-    ttk::label .tools.right.schemaLabel -text "Argument schema"
-    text .tools.right.schema -height 5 -wrap word -state disabled -padx 8 -pady 8
-    ttk::label .tools.right.argumentsLabel -text "Arguments (JSON)"
-    text .tools.right.arguments -height 7 -wrap word -padx 8 -pady 8
+    ttk::label .tools.right.argumentsLabel -text "Arguments (* required)"
+    ttk::frame .tools.right.form
     ttk::label .tools.right.resultLabel -text "Result"
     text .tools.right.result -height 10 -wrap word -state disabled -padx 8 -pady 8
     .tools.right.result tag configure error -foreground #c62828
@@ -475,28 +626,22 @@ proc ::oodzGui::showTools {} {
     grid .tools.left.names -row 0 -column 0 -sticky nsew
     grid .tools.left.namesScroll -row 0 -column 1 -sticky ns
     grid .tools.right.description -row 0 -column 0 -columnspan 2 -sticky ew -pady {0 10}
-    grid .tools.right.schemaLabel -row 1 -column 0 -columnspan 2 -sticky w
-    grid .tools.right.schema -row 2 -column 0 -columnspan 2 -sticky nsew -pady {4 10}
-    grid .tools.right.argumentsLabel -row 3 -column 0 -columnspan 2 -sticky w
-    grid .tools.right.arguments -row 4 -column 0 -columnspan 2 -sticky nsew -pady {4 10}
-    grid .tools.right.resultLabel -row 5 -column 0 -columnspan 2 -sticky w
-    grid .tools.right.result -row 6 -column 0 -columnspan 2 -sticky nsew -pady {4 10}
-    grid .tools.right.run -row 7 -column 0 -sticky w
-    grid .tools.right.close -row 7 -column 1 -sticky e
+    grid .tools.right.argumentsLabel -row 1 -column 0 -columnspan 2 -sticky w
+    grid .tools.right.form -row 2 -column 0 -columnspan 2 -sticky nsew -pady {4 10}
+    grid .tools.right.resultLabel -row 3 -column 0 -columnspan 2 -sticky w
+    grid .tools.right.result -row 4 -column 0 -columnspan 2 -sticky nsew -pady {4 10}
+    grid .tools.right.run -row 5 -column 0 -sticky w
+    grid .tools.right.close -row 5 -column 1 -sticky e
     grid rowconfigure .tools 0 -weight 1
     grid columnconfigure .tools 1 -weight 1
     grid rowconfigure .tools.left 0 -weight 1
     grid columnconfigure .tools.left 0 -weight 1
-    foreach row {2 4 6} {
+    foreach row {2 4} {
         grid rowconfigure .tools.right $row -weight 1
     }
     grid columnconfigure .tools.right 0 -weight 1
     grid columnconfigure .tools.right 1 -weight 1
     bind .tools.left.names <<ListboxSelect>> ::oodzGui::selectTool
-    bind .tools.right.arguments <Control-Return> {
-        ::oodzGui::runSelectedTool
-        break
-    }
     if {[.tools.left.names size] > 0} {
         .tools.left.names selection set 0
         ::oodzGui::selectTool
@@ -653,6 +798,8 @@ proc ::oodzGui::buildWidgets {} {
     .conversation tag configure ChangesLabel -foreground #a9dc52
     .conversation tag configure Status -foreground #ffd75f
     .conversation tag configure StatusLabel -foreground #ffd75f
+    .conversation tag configure Tool -foreground #a9dc52
+    .conversation tag configure ToolLabel -foreground #a9dc52
     ::oodzMarkdownTk::attach .conversation
     text .input -height 5 -wrap word -padx 8 -pady 8 -selectbackground #5294e2 -selectforeground white
     ttk::frame .actions

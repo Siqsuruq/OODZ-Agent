@@ -55,6 +55,26 @@ test plugins-lazy-1.1 {lazy registry exposes core tools and activates index matc
     [list list_files read_file search_plugins xml_validate] \
     1]
 
+test plugins-lazy-1.1a {GUI-style discovery can request all definitions} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" "" true [list read_file]]
+    try {
+        set visible [lmap definition [$registry definitions] {
+            dict get $definition name
+        }]
+        set all [lmap definition [$registry definitions true] {
+            dict get $definition name
+        }]
+        list \
+            [expr {"save_translation" ni $visible}] \
+            [expr {"save_translation" in $all}] \
+            [expr {[llength $all] > [llength $visible]}]
+    } finally {
+        $registry destroy
+    }
+} -result [list 1 1 1]
+
 test plugins-lazy-1.2 {lazy search validates query and result limit} -body {
     set registry [::tPluginRegistry new \
         $projectDir [list [file join $projectDir plugins]] \
