@@ -662,7 +662,7 @@ proc ::oodzGui::showTools {} {
         set title [dict getdef $categoryTitles $category \
             [string totitle [string map {_ " " - " "} $category]]]
         set parent [.tools.left.names insert {} end \
-            -id "category:$category" -text $title -open true]
+            -id "category:$category" -text $title -open false]
         foreach name [lsort [dict get $categories $category]] {
             .tools.left.names insert $parent end -id "tool:$name" \
                 -text $name -values [list $name]
@@ -690,16 +690,7 @@ proc ::oodzGui::showTools {} {
     grid columnconfigure .tools.right 0 -weight 1
     grid columnconfigure .tools.right 1 -weight 1
     grid columnconfigure .tools.right 2 -weight 0
-    bind .tools.left.names <<ListboxSelect>> ::oodzGui::selectTool
-    set firstCategory [lindex [.tools.left.names children {}] 0]
-    if {$firstCategory ne ""} {
-        set firstTool [lindex [.tools.left.names children $firstCategory] 0]
-        if {$firstTool ne ""} {
-            .tools.left.names selection set $firstTool
-            .tools.left.names see $firstTool
-            ::oodzGui::selectTool
-        }
-    }
+    bind .tools.left.names <<TreeviewSelect>> ::oodzGui::selectTool
 }
 
 proc ::oodzGui::close {} {
