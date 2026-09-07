@@ -505,6 +505,21 @@ its timeout and output limit.
 /tool fossil_status {}
 ```
 
+`fossil_clone` creates a repository database and sibling checkout beneath the
+current workspace. With `Workspace.root = /home/max/projects`, this creates
+`/home/max/projects/blarepo.fossil` and `/home/max/projects/blarepo/`:
+
+```text
+/tool fossil_clone {"url":"https://code.example/blarepo","name":"blarepo"}
+```
+
+The URL must be public HTTP(S) without embedded credentials, query parameters,
+or fragments, and neither destination may already exist. Cloning requires
+approval. To use other Fossil plugins on the new checkout, change
+`Workspace.root` to `/home/max/projects/blarepo` and restart OODZ. Commits use
+`--nosync` and remain local; `fossil_push` handles the separately approved
+remote operation using credentials managed outside model arguments.
+
 Configure the Fossil executable once in the private application configuration;
 all bundled Fossil plugins resolve their logical `fossil` command through it:
 
@@ -1005,7 +1020,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 172 Passed 172 Skipped 0 Failed 0
+all.tcl: Total 173 Passed 173 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the

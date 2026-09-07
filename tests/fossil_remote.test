@@ -2,6 +2,48 @@
 
 source [file join [file dirname [file normalize [info script]]] support.tcl]
 
+test fossil-clone-1.1 {Fossil clone creates fixed sibling destinations safely} -body {
+    set root [file normalize [file join \
+        [::tcltest::temporaryDirectory] fossil-clone-[pid]]]
+    file mkdir $root
+    set ::RunnerMock::calls {}
+    set runner [::tProcessRunner new \
+        $root tclsh9.0 2500 4096 ::RunnerMock::execute]
+    set plugins [::tPluginRegistry new \
+        $root [list [file join $projectDir plugins]] \
+        ::ApprovalMock::decide 1000 65536 {} "" "" $runner]
+    set arguments [::json::write object \
+        url [::json::write string https://code.example/repo] \
+        name [::json::write string blarepo]]
+    try {
+        set ::ApprovalMock::approved 1
+        set credentialCode [catch {
+            $plugins invoke fossil_clone [::json::write object \
+                url [::json::write string https://user:secret@code.example/repo] \
+                name [::json::write string blarepo]]
+        } credentialMessage]
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $plugins invoke fossil_clone $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set result [$plugins invoke fossil_clone $arguments]
+        set call [lindex $::RunnerMock::calls 0]
+        list $credentialCode $credentialMessage \
+            $deniedCode $deniedMessage $result \
+            [lrange [lindex $call 0] 1 end]
+    } finally {
+        $plugins destroy
+        $runner destroy
+        file delete -force $root
+    }
+} -result [list \
+    1 "fossil_clone URL must not contain credentials" \
+    1 "Plugin execution denied: fossil_clone" \
+    "sandboxed Tcl output" \
+    [list clone https://code.example/repo blarepo.fossil \
+        --workdir blarepo]]
+
 test fossil-pull-1.1 {Fossil pull uses only the configured remote} -body {
     set root [file normalize [file join \
         [::tcltest::temporaryDirectory] fossil-pull-[pid]]]
