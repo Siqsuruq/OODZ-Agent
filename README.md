@@ -740,7 +740,10 @@ without reparsing the entire conversation. Its Tools dialog lists every
 installed tool, displays its description, generates argument fields from its
 schema, and invokes it locally without requiring hand-written JSON or calling
 the LLM. String and numeric fields use entries, booleans use checkboxes, enums
-use dropdowns, and nested object/array fields accept JSON values.
+use dropdowns, and nested object/array fields accept JSON values. The
+`save_translation` form is model-assisted: it asks only for the original label,
+then the LLM produces all required native-script translations and invokes the
+strict plugin payload.
 Press `Ctrl+Enter` to send a prompt. It uses the same
 configuration, workspace, plugins, and OODZ reference as the terminal interface.
 

@@ -419,6 +419,8 @@ proc ::oodzGui::selectTool {} {
     set name [.tools.left.names get [lindex $selection 0]]
     set definition [dict get $toolDefinitions $name]
     .tools.right.description configure -text [dict get $definition description]
+    .tools.right.run configure -text [expr {$name eq "save_translation"
+        ? "Translate and save" : "Run tool"}]
     ::oodzGui::buildToolForm $definition
     .tools.right.result configure -state normal
     .tools.right.result delete 1.0 end
@@ -438,6 +440,12 @@ proc ::oodzGui::buildToolForm {definition} {
     set schema [dict get $definition parameters]
     set properties [dict getdef $schema properties {}]
     set required [dict getdef $schema required {}]
+    if {[dict get $definition name] eq "save_translation"} {
+        # The human supplies only the source label. The model generates the
+        # strict multilingual payload required by the underlying plugin.
+        set properties [dict create original [dict get $properties original]]
+        set required [list original]
+    }
     if {[dict size $properties] == 0} {
         ttk::label .tools.right.form.none -text "This tool has no arguments."
         grid .tools.right.form.none -row 0 -column 0 -sticky w -pady 6
@@ -562,6 +570,15 @@ proc ::oodzGui::runSelectedTool {} {
         .tools.right.result delete 1.0 end
         .tools.right.result insert end "Error: $arguments" error
         .tools.right.result configure -state disabled
+        return
+    }
+    if {$name eq "save_translation"} {
+        set values [::json::json2dict $arguments]
+        set label [dict get $values original]
+        destroy .tools
+        .input delete 1.0 end
+        .input insert 1.0 "/oodz_trns $label"
+        ::oodzGui::send
         return
     }
     set busy 1
