@@ -23,6 +23,7 @@
         <tr><td><code>delete_file</code></td><td><span class="permission write">write</span></td><td>Delete one workspace file; directory deletion is refused.</td></tr>
         <tr><td><code>edit_file</code></td><td><span class="permission write">write</span></td><td>Replace one unique exact fragment in a UTF-8 workspace file.</td></tr>
         <tr><td><code>file_info</code></td><td><span class="permission read">read</span></td><td>Report a workspace path's type, size, modification time, and permissions.</td></tr>
+        <tr><td><code>find_files</code></td><td><span class="permission read">read</span></td><td>Recursively find files or directories by case-insensitive name glob.</td></tr>
         <tr><td><code>fossil_add</code></td><td><span class="permission write">write</span></td><td>Schedule one existing file for addition to the next Fossil commit.</td></tr>
         <tr><td><code>fossil_branch_close</code></td><td><span class="permission write">write</span></td><td>Mark one local Fossil branch closed without deleting its history.</td></tr>
         <tr><td><code>fossil_branch_info</code></td><td><span class="permission read">read</span></td><td>Show metadata for one named Fossil branch.</td></tr>
@@ -66,7 +67,7 @@
         <tr><td><code>random_string</code></td><td><span class="permission read">read</span></td><td>Generate bounded non-cryptographic random test data.</td></tr>
         <tr><td><code>read_file</code></td><td><span class="permission read">read</span></td><td>Read a UTF-8 file or a bounded numbered line range.</td></tr>
         <tr><td><code>save_translation</code></td><td><span class="permission write">write</span></td><td>Save a label and six translations to the configured service.</td></tr>
-        <tr><td><code>search_files</code></td><td><span class="permission read">read</span></td><td>Search UTF-8 workspace files for case-insensitive literal text.</td></tr>
+        <tr><td><code>search_text</code></td><td><span class="permission read">read</span></td><td>Search UTF-8 workspace files for case-insensitive literal text.</td></tr>
         <tr><td><code>sqitch_add</code></td><td><span class="permission write">write</span></td><td>Add one change to the default plan and generate its standard scripts.</td></tr>
         <tr><td><code>sqitch_deploy</code></td><td><span class="permission write">write</span></td><td>Deploy pending changes to the configured default target.</td></tr>
         <tr><td><code>sqitch_log</code></td><td><span class="permission read">read</span></td><td>Show 1–100 concise deployment events for the default target.</td></tr>

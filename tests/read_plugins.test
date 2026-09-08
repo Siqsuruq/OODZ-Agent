@@ -101,7 +101,7 @@ test skills-tool-1.1 {load_skill exposes one selected workflow on demand} -body 
     }
 } -result [list 1 1 object 1]
 
-test search-files-1.1 {search_files finds bounded nested literal matches} -body {
+test search-text-1.1 {search_text finds bounded nested literal matches} -body {
     set temporaryRoot [file join [temporaryDirectory] \
         "oodz-search-test-[pid]-[clock clicks]"]
     file mkdir [file join $temporaryRoot nested]
@@ -116,17 +116,17 @@ test search-files-1.1 {search_files finds bounded nested literal matches} -body 
         $temporaryRoot [list [file join $projectDir plugins]]]
 
     try {
-        set matches [$registry invoke search_files [::json::write object \
+        set matches [$registry invoke search_text [::json::write object \
             query [::json::write string "needle"]]]
-        set noMatches [$registry invoke search_files [::json::write object \
+        set noMatches [$registry invoke search_text [::json::write object \
             query [::json::write string "absent"] \
             path [::json::write string "nested"]]]
         set emptyResult [catch {
-            $registry invoke search_files [::json::write object \
+            $registry invoke search_text [::json::write object \
                 query [::json::write string ""]]
         } emptyMessage]
         set escapeResult [catch {
-            $registry invoke search_files [::json::write object \
+            $registry invoke search_text [::json::write object \
                 query [::json::write string "needle"] \
                 path [::json::write string "../outside"]]
         } escapeMessage]
@@ -145,6 +145,53 @@ test search-files-1.1 {search_files finds bounded nested literal matches} -body 
     1 1 \
     "No matches found." \
     1 "Search query must not be empty" \
+    1 "Plugin path escapes the workspace"]
+
+test find-files-1.1 {find_files recursively matches names and filters types} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-find-test-[pid]-[clock clicks]"]
+    file mkdir [file join $temporaryRoot src nested] \
+        [file join $temporaryRoot src Clinic]
+    foreach relativePath {cur.tcl src/nested/CUR.TCL src/other.txt} {
+        set channel [open [file join $temporaryRoot $relativePath] w]
+        close $channel
+    }
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]]]
+
+    try {
+        set exact [$registry invoke find_files [::json::write object \
+            pattern [::json::write string cur.tcl]]]
+        set tclFiles [$registry invoke find_files [::json::write object \
+            pattern [::json::write string *.tcl] \
+            path [::json::write string src] \
+            type [::json::write string file]]]
+        set directories [$registry invoke find_files [::json::write object \
+            pattern [::json::write string *clinic*] \
+            type [::json::write string directory]]]
+        set none [$registry invoke find_files [::json::write object \
+            pattern [::json::write string missing.*]]]
+        set separatorCode [catch {
+            $registry invoke find_files [::json::write object \
+                pattern [::json::write string src/*.tcl]]
+        } separatorMessage]
+        set escapeCode [catch {
+            $registry invoke find_files [::json::write object \
+                pattern [::json::write string *.tcl] \
+                path [::json::write string ../outside]]
+        } escapeMessage]
+        list $exact $tclFiles $directories $none \
+            $separatorCode $separatorMessage $escapeCode $escapeMessage
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    "cur.tcl\nsrc/nested/CUR.TCL" \
+    "src/nested/CUR.TCL" \
+    "src/Clinic/" \
+    "No matching files or directories found." \
+    1 "Filename pattern must not contain path separators; use path to select a directory" \
     1 "Plugin path escapes the workspace"]
 
 test oodz-lookup-1.1 {oodz_lookup finds compact framework capabilities} -body {

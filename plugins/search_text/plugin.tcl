@@ -1,6 +1,6 @@
-namespace eval ::plugins::search_files {}
+namespace eval ::plugins::search_text {}
 
-proc ::plugins::search_files::relativePath {workspaceRoot path} {
+proc ::plugins::search_text::relativePath {workspaceRoot path} {
     if {$path eq $workspaceRoot} {
         return "."
     }
@@ -8,7 +8,7 @@ proc ::plugins::search_files::relativePath {workspaceRoot path} {
         [expr {[string length $workspaceRoot] + 1}] end]
 }
 
-proc ::plugins::search_files::execute {workspaceRoot arguments settings} {
+proc ::plugins::search_text::execute {workspaceRoot arguments settings} {
     set query [dict get $arguments query]
     if {$query eq ""} {
         error "Search query must not be empty"
@@ -64,7 +64,7 @@ proc ::plugins::search_files::execute {workspaceRoot arguments settings} {
                     if {[string first $loweredQuery \
                             [string tolower $line]] >= 0} {
                         set preview [string range [string trim $line] 0 299]
-                        lappend matches "[::plugins::search_files::relativePath \
+                        lappend matches "[::plugins::search_text::relativePath \
                             $workspaceRoot $path]:$lineNumber: $preview"
                         if {[llength $matches] >= $maximumMatches} {
                             break

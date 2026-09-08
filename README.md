@@ -1032,7 +1032,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 175 Passed 175 Skipped 0 Failed 0
+all.tcl: Total 176 Passed 176 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the
@@ -1044,7 +1044,7 @@ The supported path is:
 
 ```text
 CLI -> tAgent -> DeepSeek
-               -> plugin registry -> read_file/list_files/list_folders/search_files/file_info/system_info/xml_validate
+               -> plugin registry -> read_file/list_files/list_folders/find_files/search_text/file_info/system_info/xml_validate
                                      oodz_lookup/oodz_search/oodz_read
                                      save_translation
                                      make_directory/edit_file/apply_patch
@@ -1067,7 +1067,11 @@ When the optional `tclreadline` package is installed, interactive input gains
 cursor movement, editing, and persistent history in `.oodz/readline-history`.
 Redirected input retains the plain `gets` path.
 
-`search_files` performs a recursive, case-insensitive literal text search within
+`find_files` recursively matches file or directory names using a case-insensitive
+glob such as `cur.tcl`, `*.tcl`, or `*clinic*`. It returns at most 200
+workspace-relative paths and skips traversal into `.git`.
+
+`search_text` performs a recursive, case-insensitive literal text search within
 the workspace. It skips `.git`, files larger than 1 MiB, and unreadable files,
 and returns at most 100 matching lines.
 
