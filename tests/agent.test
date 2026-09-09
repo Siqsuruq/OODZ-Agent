@@ -287,7 +287,85 @@ test agent-loop-lazy-1.1 {agent refreshes definitions after plugin search} -body
     [list read_file search_plugins] \
     [list read_file search_plugins xml_validate]]
 
-test agent-loop-1.2 {agent stops at the configured iteration limit} -body {
+test agent-loop-guards-1.1 {only the first tool in one response is executed} -body {
+    set firstCall [dict create id call_first type function function \
+        [dict create name list_files arguments {{}}]]
+    set extraCall [dict create id call_extra type function function \
+        [dict create name system_info arguments {{}}]]
+    set client [::StructuredFakeLLMClient new [list \
+        [dict create role assistant content "" \
+            tool_calls [list $firstCall $extraCall]] \
+        [dict create role assistant content done]]]
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    set agent [::tAgent new TestAgent "Test system role" $client $registry 3]
+    try {
+        set answer [$agent run inspect]
+        set request [lindex [lindex [$client getCalls] 1] 1]
+        set firstResult [dict get [lindex $request end-1] content]
+        set extraResult [dict get [lindex $request end] content]
+        list $answer \
+            [expr {[string first "main.tcl" $firstResult] >= 0}] \
+            [expr {[string first "at most one tool" $extraResult] >= 0}] \
+            [dict get [lindex $request end-1] tool_call_id] \
+            [dict get [lindex $request end] tool_call_id]
+    } finally {
+        $agent destroy
+        $client destroy
+        $registry destroy
+    }
+} -result [list done 1 1 call_first call_extra]
+
+test agent-loop-guards-1.2 {consecutive identical tool calls are skipped} -body {
+    set toolCall [dict create id call_repeat type function function \
+        [dict create name list_files arguments {{}}]]
+    set client [::StructuredFakeLLMClient new [list \
+        [dict create role assistant content "" tool_calls [list $toolCall]] \
+        [dict create role assistant content "" tool_calls [list $toolCall]] \
+        [dict create role assistant content done]]]
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    set agent [::tAgent new TestAgent "Test system role" $client $registry 4]
+    try {
+        set answer [$agent run inspect]
+        set request [lindex [lindex [$client getCalls] 2] 1]
+        list $answer [expr {[string first \
+            "Repeated identical plugin call skipped" \
+            [dict get [lindex $request end] content]] >= 0}]
+    } finally {
+        $agent destroy
+        $client destroy
+        $registry destroy
+    }
+} -result [list done 1]
+
+test agent-loop-context-1.1 {oversized active tool results are compacted} -body {
+    set toolCall [dict create id call_read type function function \
+        [dict create name read_file arguments \
+            [::json::write object path [::json::write string README.md]]]]
+    set client [::StructuredFakeLLMClient new [list \
+        [dict create role assistant content "" tool_calls [list $toolCall]] \
+        [dict create role assistant content done]]]
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    set agent [::tAgent new \
+        TestAgent "Test system role" $client $registry 3 "" 200 false 600]
+    try {
+        set answer [$agent run inspect]
+        set request [lindex [lindex [$client getCalls] 1] 1]
+        list $answer \
+            [dict get [lindex $request 0] role] \
+            [expr {[string first "Tool result truncated" \
+                [dict get [lindex $request end] content]] >= 0}] \
+            [expr {[string length [dict get [lindex $request end] content]] < 300}]
+    } finally {
+        $agent destroy
+        $client destroy
+        $registry destroy
+    }
+} -result [list done user 1 1]
+
+test agent-loop-1.2 {agent checkpoints at the configured iteration limit} -body {
     set registry [::tPluginRegistry new \
         $projectDir [list [file join $projectDir plugins]]]
     set arguments [::json::write object]
@@ -323,10 +401,10 @@ test agent-loop-1.2 {agent stops at the configured iteration limit} -body {
         $registry destroy
     }
 } -result [list \
-    1 "Agent exceeded maximum iterations: 2" \
+    0 "Reached the per-request work limit of 2 model iterations. Completed changes have been preserved. Review the reported changes, then say 'next' to continue." \
     continued [list user assistant tool assistant tool assistant] \
     list_files \
-    "The previous task ended before a final response: Agent exceeded maximum iterations: 2" \
+    "Reached the per-request work limit of 2 model iterations. Completed changes have been preserved. Review the reported changes, then say 'next' to continue." \
     [list user assistant tool assistant tool assistant user]]
 
 test agent-history-1.6 {character budget retains complete recent turns} -body {

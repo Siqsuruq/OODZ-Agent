@@ -109,7 +109,7 @@ package require json::write
     variable log provider apiKey modelUrl modelName timeout
     variable maxRetries retryDelay transport ownsTransport
     variable streamingMessage streamingToolCalls thinkingEnabled
-    variable reportedModel cancelRequested
+    variable reportedModel cancelRequested diagnostics
 
     constructor {configObj {transportObj ""}} {
         set log [::tLogger getLogger [self class]]
@@ -150,6 +150,7 @@ package require json::write
         set thinkingEnabled [expr {$configuredThinking ? 1 : 0}]
         set reportedModel ""
         set cancelRequested 0
+        set diagnostics ""
 
         if {$transportObj eq ""} {
             set transport [::tHttpTransport new]
@@ -182,6 +183,48 @@ package require json::write
         set cancelRequested 0
     }
 
+    method setDiagnostics {collector} {
+        set diagnostics $collector
+    }
+
+    method diagnostic {type {details {}}} {
+        if {$diagnostics ne ""} {
+            $diagnostics record $type $details
+        }
+    }
+
+    method recordUsage {response} {
+        if {$diagnostics eq ""} {return}
+        set usage [dict create]
+        if {[dict exists $response usage]} {
+            set reported [dict get $response usage]
+            foreach {source target} {
+                prompt_tokens input_tokens
+                completion_tokens output_tokens
+                total_tokens total_tokens
+            } {
+                if {[dict exists $reported $source]} {
+                    dict set usage $target [dict get $reported $source]
+                }
+            }
+        }
+        foreach {source target} {
+            prompt_eval_count input_tokens
+            eval_count output_tokens
+        } {
+            if {[dict exists $response $source]} {
+                dict set usage $target [dict get $response $source]
+            }
+        }
+        if {![dict exists $usage total_tokens]
+                && [dict exists $usage input_tokens]
+                && [dict exists $usage output_tokens]} {
+            dict set usage total_tokens [expr {
+                [dict get $usage input_tokens] + [dict get $usage output_tokens]}]
+        }
+        if {[dict size $usage] > 0} {$diagnostics record usage $usage}
+    }
+
     method cancel {} {
         set cancelRequested 1
         if {"cancel" in [info object methods $transport -all]} {
@@ -199,6 +242,10 @@ package require json::write
     method queryMessage {systemPrompt messages {tools {}}} {
         $log log info "Sending HTTP POST request to API..."
         my logRequestShape $messages
+        set requestStarted [clock milliseconds]
+        my diagnostic llm_request [dict create mode standard \
+            message_count [llength $messages] \
+            context_chars [string length $messages] tool_count [llength $tools]]
 
         set payload [my buildPayload $systemPrompt $messages $tools]
         set maxAttempts [expr {$maxRetries + 1}]
@@ -214,6 +261,8 @@ package require json::write
                     my waitBeforeRetry $attempt
                     continue
                 }
+                my diagnostic llm_error [dict create mode standard \
+                    duration_ms [expr {[clock milliseconds] - $requestStarted}]]
                 return -options $transportOptions $response
             }
 
@@ -232,9 +281,16 @@ package require json::write
             if {$status ne "ok" || $code < 200 || $code >= 300} {
                 set detail [my parseErrorResponse $body]
                 $log log error "API call failed ($status, HTTP $code)"
+            my diagnostic llm_error [dict create mode standard code $code \
+                duration_ms [expr {[clock milliseconds] - $requestStarted}]]
             error "[my providerLabel] API Error: HTTP $code: $detail"
             }
 
+            if {![catch {::json::json2dict $body} parsedBody]} {
+                my recordUsage $parsedBody
+            }
+            my diagnostic llm_response [dict create mode standard code $code \
+                duration_ms [expr {[clock milliseconds] - $requestStarted}]]
             return [my parseResponseMessage $body]
         }
     }
@@ -244,6 +300,10 @@ package require json::write
     } {
         $log log info "Sending streaming HTTP POST request to API..."
         my logRequestShape $messages
+        set requestStarted [clock milliseconds]
+        my diagnostic llm_request [dict create mode stream \
+            message_count [llength $messages] \
+            context_chars [string length $messages] tool_count [llength $tools]]
         set payload [my buildPayload $systemPrompt $messages $tools 1]
         set streamingMessage [dict create role assistant content ""]
         set streamingToolCalls [dict create]
@@ -252,6 +312,8 @@ package require json::write
             $transport postStream $modelUrl $payload [my requestHeaders] $timeout [list [self] consumeStreamEvent $contentCallback]
         } response]} {
             my checkCancelled
+            my diagnostic llm_error [dict create mode stream \
+                duration_ms [expr {[clock milliseconds] - $requestStarted}]]
             $log log warn "Streaming transport exception; retrying without streaming"
             set fallbackMessage [my queryMessage $systemPrompt $messages $tools]
             if {[dict exists $fallbackMessage content]
@@ -276,6 +338,8 @@ package require json::write
             }
             set detail [my parseErrorResponse $body]
             if {$status ne "ok"} {
+                my diagnostic llm_error [dict create mode stream code $code \
+                    duration_ms [expr {[clock milliseconds] - $requestStarted}]]
                 set transportDetail ""
                 if {[dict exists $response error]} {
                     set transportDetail [string trim [dict get $response error]]
@@ -286,6 +350,8 @@ package require json::write
                 error "[my providerLabel] transport error: $status (HTTP $code)"
             }
             $log log error "API streaming call failed (HTTP $code): $detail"
+            my diagnostic llm_error [dict create mode stream code $code \
+                duration_ms [expr {[clock milliseconds] - $requestStarted}]]
             error "[my providerLabel] API Error: HTTP $code: $detail"
         }
 
@@ -308,6 +374,8 @@ package require json::write
             }
             return $fallbackMessage
         }
+        my diagnostic llm_response [dict create mode stream code $code \
+            duration_ms [expr {[clock milliseconds] - $requestStarted}]]
         return $streamingMessage
     }
 
@@ -316,6 +384,7 @@ package require json::write
             return
         }
         my recordReportedModel $event
+        my recordUsage $event
         if {![dict exists $event choices]
                 || [llength [dict get $event choices]] == 0} {
             return

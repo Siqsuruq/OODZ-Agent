@@ -16,6 +16,7 @@ namespace eval ::oodzGui {
     variable backend ""
     variable historyStore ""
     variable changeTracker ""
+    variable diagnostics ""
     variable workspaceRoot ""
     variable instructionPath ""
     variable approveAll 0
@@ -162,6 +163,13 @@ proc ::oodzGui::send {} {
                 || [string trim $translationLabel] eq ""} {
             .input delete 1.0 end
             ::oodzGui::appendMessage Error "Usage: /oodz_trns label"
+            focus .input
+            return
+        }
+        if {[catch {$registry activate save_translation} activationError]} {
+            .input delete 1.0 end
+            ::oodzGui::appendMessage Error \
+                "Cannot start translation: $activationError"
             focus .input
             return
         }
@@ -695,7 +703,7 @@ proc ::oodzGui::showTools {} {
 
 proc ::oodzGui::close {} {
     foreach name {
-        agent historyStore changeTracker registry pluginWorker commandExecutor commandRunner \
+        agent historyStore changeTracker diagnostics registry pluginWorker commandExecutor commandRunner \
         instructionRegistry skillRegistry processRunner client backend config
     } {
         variable $name
@@ -705,6 +713,158 @@ proc ::oodzGui::close {} {
         }
     }
     destroy .
+}
+
+proc ::oodzGui::diagnosticNumber {value} {
+    if {$value >= 1000000} {return [format "%.2fM" [expr {$value / 1000000.0}]]}
+    if {$value >= 1000} {return [format "%.1fK" [expr {$value / 1000.0}]]}
+    return $value
+}
+
+proc ::oodzGui::drawDiagnosticBars {canvas counts} {
+    $canvas delete all
+    set width [winfo width $canvas]
+    if {$width < 100} {set width 760}
+    set rows {}
+    dict for {name count} $counts {lappend rows [list $count $name]}
+    set rows [lrange [lsort -integer -decreasing -index 0 $rows] 0 9]
+    if {[llength $rows] == 0} {
+        $canvas create text 12 20 -anchor nw -text "No tool calls recorded yet."
+        return
+    }
+    set maximum [lindex [lindex $rows 0] 0]
+    set y 12
+    foreach row $rows {
+        lassign $row count name
+        set barWidth [expr {int(($width - 220) * $count / double($maximum))}]
+        $canvas create text 8 [expr {$y + 9}] -anchor w -text $name
+        $canvas create rectangle 150 $y [expr {150 + $barWidth}] \
+            [expr {$y + 18}] -fill #5294e2 -outline {}
+        $canvas create text [expr {160 + $barWidth}] [expr {$y + 9}] \
+            -anchor w -text $count
+        incr y 23
+    }
+}
+
+proc ::oodzGui::drawDiagnosticTimeline {canvas events} {
+    $canvas delete all
+    set values {}
+    foreach event $events {
+        if {[dict get $event type] eq "llm_request"
+                && [dict exists $event context_chars]} {
+            lappend values [dict get $event context_chars]
+        }
+    }
+    set values [lrange $values end-59 end]
+    set width [winfo width $canvas]
+    set height [winfo height $canvas]
+    if {$width < 100} {set width 760}
+    if {$height < 100} {set height 210}
+    $canvas create text 8 8 -anchor nw -text "Context characters per LLM request (latest 60)"
+    if {[llength $values] == 0} {
+        $canvas create text 8 35 -anchor nw -text "No requests recorded yet."
+        return
+    }
+    set maximum [lindex [lsort -integer -decreasing $values] 0]
+    if {$maximum < 1} {set maximum 1}
+    set left 45
+    set top 30
+    set bottom [expr {$height - 22}]
+    set plotWidth [expr {$width - $left - 15}]
+    set plotHeight [expr {$bottom - $top}]
+    $canvas create line $left $top $left $bottom [expr {$left + $plotWidth}] $bottom -fill #888888
+    $canvas create text 4 $top -anchor nw -text [::oodzGui::diagnosticNumber $maximum]
+    set points {}
+    set divisor [expr {max(1, [llength $values] - 1)}]
+    set index 0
+    foreach value $values {
+        set x [expr {$left + $plotWidth * $index / double($divisor)}]
+        set y [expr {$bottom - $plotHeight * $value / double($maximum)}]
+        lappend points $x $y
+        incr index
+    }
+    if {[llength $values] == 1} {
+        $canvas create oval [expr {[lindex $points 0]-2}] [expr {[lindex $points 1]-2}] \
+            [expr {[lindex $points 0]+2}] [expr {[lindex $points 1]+2}] -fill #a9dc52
+    } else {
+        $canvas create line {*}$points -fill #a9dc52 -width 2
+    }
+}
+
+proc ::oodzGui::refreshDiagnostics {} {
+    variable diagnostics
+    if {$diagnostics eq "" || ![winfo exists .diagnostics]} {return}
+    set summary [$diagnostics summary]
+    set requestCount [dict get $summary requests]
+    set duration [dict get $summary request_duration_ms]
+    set average [expr {$requestCount > 0 ? round($duration / double($requestCount)) : 0}]
+    set hasUsage 0
+    foreach event [$diagnostics events] {
+        if {[dict get $event type] eq "usage"} {set hasUsage 1; break}
+    }
+    set values [dict create \
+        requests $requestCount \
+        tokens [expr {$hasUsage ? [::oodzGui::diagnosticNumber [dict get $summary total_tokens]] : "N/A"}] \
+        tools [dict get $summary tool_calls] \
+        failures [expr {[dict get $summary tool_failures] + [dict get $summary request_failures]}] \
+        skipped [dict get $summary skipped_calls] \
+        average "${average} ms"]
+    dict for {name value} $values {
+        .diagnostics.cards.value_$name configure -text $value
+    }
+    ::oodzGui::drawDiagnosticBars .diagnostics.toolChart [dict get $summary tools]
+    ::oodzGui::drawDiagnosticTimeline .diagnostics.contextChart [$diagnostics events]
+}
+
+proc ::oodzGui::clearDiagnostics {} {
+    variable diagnostics
+    $diagnostics clear
+    ::oodzGui::refreshDiagnostics
+}
+
+proc ::oodzGui::showDiagnostics {} {
+    catch {destroy .diagnostics}
+    toplevel .diagnostics
+    wm title .diagnostics "OODZ Diagnostics"
+    wm minsize .diagnostics 760 600
+    ttk::frame .diagnostics.cards -padding 10
+    set column 0
+    foreach {name label} {
+        requests Requests tokens Tokens tools {Tool calls}
+        failures Failures skipped Skipped average {Avg response}
+    } {
+        ttk::labelframe .diagnostics.cards.card_$name -text $label -padding 10
+        ttk::label .diagnostics.cards.value_$name -text 0 -font TkHeadingFont
+        pack .diagnostics.cards.value_$name -in .diagnostics.cards.card_$name
+        grid .diagnostics.cards.card_$name -row 0 \
+            -column $column -sticky nsew -padx 4
+        grid columnconfigure .diagnostics.cards $column -weight 1
+        incr column
+    }
+    canvas .diagnostics.toolChart -height 245 -highlightthickness 1 \
+        -highlightbackground #777777
+    canvas .diagnostics.contextChart -height 220 -highlightthickness 1 \
+        -highlightbackground #777777
+    ttk::frame .diagnostics.actions -padding 10
+    ttk::button .diagnostics.refresh -text Refresh \
+        -command ::oodzGui::refreshDiagnostics
+    ttk::button .diagnostics.clear -text "Clear data" \
+        -command ::oodzGui::clearDiagnostics
+    ttk::button .diagnostics.close -text Close \
+        -command [list destroy .diagnostics]
+    pack .diagnostics.refresh .diagnostics.clear -in .diagnostics.actions \
+        -side left -padx {0 8}
+    pack .diagnostics.close -in .diagnostics.actions -side right
+    grid .diagnostics.cards -row 0 -column 0 -sticky ew
+    grid .diagnostics.toolChart -row 1 -column 0 -sticky nsew -padx 10 -pady 5
+    grid .diagnostics.contextChart -row 2 -column 0 -sticky nsew -padx 10 -pady 5
+    grid .diagnostics.actions -row 3 -column 0 -sticky ew
+    grid rowconfigure .diagnostics 1 -weight 1
+    grid rowconfigure .diagnostics 2 -weight 1
+    grid columnconfigure .diagnostics 0 -weight 1
+    bind .diagnostics.toolChart <Configure> {after idle ::oodzGui::refreshDiagnostics}
+    bind .diagnostics.contextChart <Configure> {after idle ::oodzGui::refreshDiagnostics}
+    after idle ::oodzGui::refreshDiagnostics
 }
 
 proc ::oodzGui::maximizeWindow {} {
@@ -820,6 +980,8 @@ proc ::oodzGui::buildWidgets {} {
     .menuBar add cascade -label View -menu .menuBar.view
     .menuBar.view add command -label Tools -command ::oodzGui::showTools
     .menuBar.view add command -label Skills -command ::oodzGui::showSkills
+    .menuBar.view add command -label Diagnostics \
+        -command ::oodzGui::showDiagnostics
     menu .menuBar.help -tearoff 0
     .menuBar add cascade -label Help -menu .menuBar.help
     .menuBar.help add command -label "Available Skills" \
@@ -904,6 +1066,7 @@ proc ::oodzGui::start {} {
     variable backend
     variable historyStore
     variable changeTracker
+    variable diagnostics
     variable workspaceRoot
 
     set config [::Config new]
@@ -920,6 +1083,13 @@ proc ::oodzGui::start {} {
     ::tLogger setAppenderFactory [list ::FileAppender new $logPath]
     [::tLogger getLogger "Global"] setLogLevel [$config get Logging.level info]
     set workspaceRoot [::resolveWorkspaceRoot $scriptDir [$config get Workspace.root .]]
+    set diagnosticsPath [$config get Diagnostics.file .oodz/diagnostics.jsonl]
+    if {[file pathtype $diagnosticsPath] ne "absolute"} {
+        set diagnosticsPath [file join $scriptDir $diagnosticsPath]
+    }
+    set diagnostics [tDiagnostics new $diagnosticsPath \
+        [$config get Diagnostics.enabled true] \
+        [$config get Diagnostics.max_events 5000]]
     set changeTrackingEnabled [$config get ChangeTracking.enabled true]
     if {![string is boolean -strict $changeTrackingEnabled]} {
         error "ChangeTracking.enabled must be boolean"
@@ -937,6 +1107,7 @@ proc ::oodzGui::start {} {
         dict set referenceRoots oodz $oodzRoot
     }
     set client [tLLMClient new $config]
+    $client setDiagnostics $diagnostics
     set skillRegistry [tSkillRegistry new [::resolveSkillDirectories $scriptDir [$config get Skills.directories ""]] [$config get Skills.max_file_bytes 65536]]
     set instructionRegistry [tInstructionRegistry new $workspaceRoot [$config get Workspace.instructions ""] [$config get Workspace.instructions_max_file_bytes 16384] [$config get Workspace.instructions_max_total_bytes 65536]]
     set runnerEnabled [$config get Runner.enabled false]
@@ -1005,7 +1176,8 @@ proc ::oodzGui::start {} {
         [$config get Plugins.max_output_chars 65536] $referenceRoots $skillRegistry $instructionRegistry $processRunner $pluginLazyLoading $pluginCore "" $pluginWorker $modelInfoCallback $commandExecutor]
     set systemRole [::buildAgentSystemRole $config $instructions [$skillRegistry summaries] [$instructionRegistry enabled] $runnerEnabled $pluginLazyLoading]
     set systemRole [::addModelIdentityToSystemRole $systemRole $client]
-    set agent [tAgent new [$config get Agent.name] $systemRole $client $registry [$config get Agent.max_iterations 16] ::oodzGui::streamChunk [$config get Agent.max_history_messages 200] [$config get Agent.summarize_history true] [$config get Agent.max_history_chars 120000]]
+    set agent [tAgent new [$config get Agent.name] $systemRole $client $registry [$config get Agent.max_iterations 24] ::oodzGui::streamChunk [$config get Agent.max_history_messages 200] [$config get Agent.summarize_history true] [$config get Agent.max_history_chars 60000]]
+    $agent setDiagnostics $diagnostics
     set historyPath [$config get Agent.history_file .oodz/history.json]
     if {[file pathtype $historyPath] ne "absolute"} {
         set historyPath [file join $scriptDir $historyPath]

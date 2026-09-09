@@ -17,8 +17,9 @@ proc ::plugins::read_file::execute {workspaceRoot arguments settings} {
     if {![string is entier -strict $endLine] || $endLine < $startLine} {
         error "end_line must be an integer greater than or equal to start_line"
     }
-    if {$endLine - $startLine + 1 > 200} {
-        error "read_file ranges are limited to 200 lines"
+    set truncated [expr {$endLine - $startLine + 1 > 200}]
+    if {$truncated} {
+        set endLine [expr {$startLine + 199}]
     }
 
     set path [::PluginSupport::resolveWorkspacePath \
@@ -51,6 +52,9 @@ proc ::plugins::read_file::execute {workspaceRoot arguments settings} {
         set line [string trimright \
             [lindex $lines [expr {$lineNumber - 1}]] "\r"]
         lappend output "$lineNumber: $line"
+    }
+    if {$truncated} {
+        return "Requested range truncated to lines $startLine-$endLine.\n[join $output \n]"
     }
     return [join $output "\n"]
 }

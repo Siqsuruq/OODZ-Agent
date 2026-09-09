@@ -1,0 +1,52 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test diagnostics-1.1 {structured events persist and summarize provider-neutral metrics} -body {
+    set directory [file join [temporaryDirectory] \
+        "diagnostics-[pid]-[clock clicks]"]
+    file mkdir $directory
+    set path [file join $directory diagnostics.jsonl]
+    set collector [::tDiagnostics new $path true 100]
+    try {
+        $collector record llm_request [dict create context_chars 1200]
+        $collector record llm_response [dict create duration_ms 250]
+        $collector record usage [dict create input_tokens 100 \
+            output_tokens 20 total_tokens 120]
+        $collector record tool_call [dict create name read_file]
+        $collector record tool_call [dict create name read_file]
+        $collector record tool_failure [dict create name read_file]
+        $collector record tool_skipped [dict create name edit_file]
+        $collector record context_compaction [dict create omitted_groups 3]
+        $collector destroy
+        set collector [::tDiagnostics new $path true 100]
+        set summary [$collector summary]
+        list [llength [$collector events]] \
+            [dict get $summary requests] \
+            [dict get $summary total_tokens] \
+            [dict get $summary request_duration_ms] \
+            [dict get $summary tool_calls] \
+            [dict get $summary tool_failures] \
+            [dict get $summary skipped_calls] \
+            [dict get $summary compactions] \
+            [dict get $summary tools read_file]
+    } finally {
+        if {[info object isa object $collector]} {$collector destroy}
+        file delete -force $directory
+    }
+} -result [list 8 1 120 250 2 1 1 1 2]
+
+test diagnostics-1.2 {disabled diagnostics neither retain nor write events} -body {
+    set path [file join [temporaryDirectory] \
+        "disabled-diagnostics-[pid]-[clock clicks].jsonl"]
+    set collector [::tDiagnostics new $path false 100]
+    try {
+        $collector record llm_request
+        list [llength [$collector events]] [file exists $path]
+    } finally {
+        $collector destroy
+        file delete -force $path
+    }
+} -result [list 0 0]
+
+::finishTests

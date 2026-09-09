@@ -5,7 +5,7 @@
     variable log name systemRole llmClient memory pluginRegistry maxIterations
     variable streamCallback maxHistoryMessages maxHistoryChars historySummary
     variable summarizedMessageCount summarizeHistoryEnabled
-    variable cancelRequested
+    variable cancelRequested diagnostics
 
     constructor {
         agentName role clientObject {registryObject ""} {iterationLimit 8}
@@ -40,6 +40,7 @@
         set historySummary ""
         set summarizedMessageCount 0
         set cancelRequested 0
+        set diagnostics ""
 
         $log log info "Agent '$name' successfully spawned."
     }
@@ -50,6 +51,7 @@
             $llmClient beginRequest
         }
         $log log info "Agent execution triggered for task: '$task'"
+        my diagnostic task_start [dict create task_chars [string length $task]]
         set response ""
         set userMessage [dict create role user content $task]
         set requestHistory [my requestHistory]
@@ -67,6 +69,7 @@
             }
         } errMsg errOptions]} {
             $log log critical "Agent run failed: $errMsg"
+            my diagnostic task_error
             if {[dict exists $errOptions -errorcode]
                     && [dict get $errOptions -errorcode] eq {OODZ CANCELLED}} {
                 lappend requestMessages [dict create role assistant content \
@@ -88,17 +91,29 @@
             [llength $requestHistory] end]
         set memory [concat $memory $newMessages]
         $log log info "Thinking cycle completed successfully."
+        my diagnostic task_complete
         return $response
+    }
+
+    method setDiagnostics {collector} {
+        set diagnostics $collector
+    }
+
+    method diagnostic {type {details {}}} {
+        if {$diagnostics ne ""} {$diagnostics record $type $details}
     }
 
     method runAgentLoop {messagesVariable} {
         upvar 1 $messagesVariable messages
+        set previousToolFingerprint ""
         for {set iteration 1} {$iteration <= $maxIterations} {incr iteration} {
             my checkCancelled
+            my diagnostic iteration [dict create number $iteration]
             # Plugin discovery may activate additional definitions between
             # model turns, so take a fresh snapshot on every iteration.
             set tools [$pluginRegistry definitions]
-            set activeMessages [dict get [my messageWindow $messages] included]
+            set activeMessages [my boundedModelMessages \
+                [dict get [my messageWindow $messages] included]]
             if {$streamCallback ne "" && "queryMessageStream" in [info object methods $llmClient -all]} {
                 set assistantMessage [$llmClient queryMessageStream $systemRole $activeMessages $tools $streamCallback]
                 {*}$streamCallback "\n"
@@ -116,24 +131,62 @@
             }
 
             lappend messages $assistantMessage
-            foreach toolCall [dict get $assistantMessage tool_calls] {
+            set toolCalls [dict get $assistantMessage tool_calls]
+            set toolIndex 0
+            foreach toolCall $toolCalls {
                 set callId [dict get $toolCall id]
                 set function [dict get $toolCall function]
                 set toolName [dict get $function name]
                 set arguments [dict get $function arguments]
-                $log log info "Executing plugin: $toolName"
+                incr toolIndex
 
+                if {$toolIndex > 1} {
+                    set toolResult "Plugin call skipped: OODZ executes at most one tool per model response. Request this tool again in the next response if it is still needed."
+                    $log log warn "Skipped extra plugin call: $toolName"
+                    my diagnostic tool_skipped [dict create name $toolName reason extra]
+                    lappend messages [dict create role tool \
+                        content $toolResult tool_call_id $callId]
+                    continue
+                }
+
+                set fingerprint [list $toolName $arguments]
+                if {$fingerprint eq $previousToolFingerprint} {
+                    set toolResult "Repeated identical plugin call skipped. Use the previous result or change the arguments."
+                    $log log warn "Skipped repeated identical plugin call: $toolName"
+                    my diagnostic tool_skipped [dict create name $toolName reason repeated]
+                    lappend messages [dict create role tool \
+                        content $toolResult tool_call_id $callId]
+                    continue
+                }
+                set previousToolFingerprint $fingerprint
+                set started [clock milliseconds]
+                $log log info "Executing plugin: $toolName (arguments_chars=[string length $arguments])"
+                my diagnostic tool_call [dict create name $toolName \
+                    arguments_chars [string length $arguments]]
+
+                set succeeded 1
                 if {[catch {
                     $pluginRegistry invokeForModel $toolName $arguments
                 } toolResult]} {
+                    set succeeded 0
                     set toolResult "Plugin error: $toolResult"
                     $log log warn "Plugin failed: $toolName: $toolResult"
+                    my diagnostic tool_failure [dict create name $toolName]
                 }
+                set duration [expr {[clock milliseconds] - $started}]
+                $log log info "Plugin completed: $toolName (success=$succeeded duration_ms=$duration result_chars=[string length $toolResult])"
+                my diagnostic tool_result [dict create name $toolName \
+                    success $succeeded duration_ms $duration \
+                    result_chars [string length $toolResult]]
                 lappend messages [dict create role tool content $toolResult tool_call_id $callId]
             }
         }
 
-        error "Agent exceeded maximum iterations: $maxIterations"
+        set content "Reached the per-request work limit of $maxIterations model iterations. Completed changes have been preserved. Review the reported changes, then say 'next' to continue."
+        lappend messages [dict create role assistant content $content]
+        $log log warn "Agent reached maximum iterations: $maxIterations"
+        my diagnostic iteration_limit [dict create limit $maxIterations]
+        return [dict create content $content messages $messages]
     }
 
     method cancel {} {
@@ -242,6 +295,109 @@
             incr size 32
         }
         return $size
+    }
+
+    method compactModelMessage {message} {
+        set role [dict getdef $message role ""]
+        set toolContentLimit [expr {max(200, min(6000, $maxHistoryChars / 3))}]
+        if {$role eq "tool" && [dict exists $message content]
+                && [string length [dict get $message content]] > $toolContentLimit} {
+            dict set message content \
+                "[string range [dict get $message content] 0 [expr {$toolContentLimit - 2}]]…\n\[Tool result truncated in active context.\]"
+        }
+        if {$role eq "assistant" && [dict exists $message reasoning_content]
+                && [string length [dict get $message reasoning_content]] > 2000} {
+            dict set message reasoning_content \
+                "[string range [dict get $message reasoning_content] 0 1998]…"
+        }
+        if {$role eq "assistant" && [dict exists $message content]
+                && [string length [dict get $message content]] > 4000} {
+            dict set message content \
+                "[string range [dict get $message content] 0 3998]…"
+        }
+        if {$role eq "assistant" && [dict exists $message tool_calls]} {
+            set compactCalls {}
+            foreach call [dict get $message tool_calls] {
+                if {[dict exists $call function arguments]
+                        && [string length [dict get $call function arguments]] > 6000} {
+                    dict set call function arguments \
+                        {{"context_omitted":true}}
+                }
+                lappend compactCalls $call
+            }
+            dict set message tool_calls $compactCalls
+        }
+        return $message
+    }
+
+    method boundedModelMessages {messages} {
+        if {[my messagesSize $messages] <= $maxHistoryChars} {
+            return $messages
+        }
+
+        set userIndex -1
+        for {set index [expr {[llength $messages] - 1}]} {$index >= 0} \
+                {incr index -1} {
+            if {[dict getdef [lindex $messages $index] role ""] eq "user"} {
+                set userIndex $index
+                break
+            }
+        }
+        if {$userIndex < 0} {
+            return [lrange $messages end-[expr {$maxHistoryMessages - 1}] end]
+        }
+
+        set userMessage [my compactModelMessage [lindex $messages $userIndex]]
+        set groups {}
+        set group {}
+        foreach message [lrange $messages [expr {$userIndex + 1}] end] {
+            set message [my compactModelMessage $message]
+            if {[dict getdef $message role ""] eq "assistant"
+                    && [llength $group] > 0} {
+                lappend groups $group
+                set group {}
+            }
+            lappend group $message
+        }
+        if {[llength $group] > 0} {
+            lappend groups $group
+        }
+
+        set selected {}
+        set selectedSize [my messagesSize [list $userMessage]]
+        for {set index [expr {[llength $groups] - 1}]} {$index >= 0} \
+                {incr index -1} {
+            set candidate [lindex $groups $index]
+            set candidateSize [my messagesSize $candidate]
+            if {[llength $selected] > 0
+                    && $selectedSize + $candidateSize > $maxHistoryChars} {
+                break
+            }
+            set selected [concat $candidate $selected]
+            incr selectedSize $candidateSize
+        }
+
+        set omitted [expr {[llength $groups] - 1}]
+        if {[llength $selected] > 0} {
+            # Count selected assistant/tool groups, not individual messages.
+            set selectedFirstRole [dict getdef [lindex $selected 0] role ""]
+            set omitted 0
+            set selectedGroups 0
+            foreach message $selected {
+                if {[dict getdef $message role ""] eq "assistant"} {
+                    incr selectedGroups
+                }
+            }
+            set omitted [expr {[llength $groups] - $selectedGroups}]
+        }
+        if {$omitted <= 0} {
+            return [concat [list $userMessage] $selected]
+        }
+        set notice [dict create role system content \
+            "Earlier tool exchanges from this same task were omitted to keep the model request bounded. Continue from the latest results and do not repeat completed inspection or edits."]
+        $log log info "Compacted active task context: omitted_groups=$omitted"
+        my diagnostic context_compaction [dict create omitted_groups $omitted]
+        return [concat [list $notice $userMessage] $selected]
     }
 
     method compactExcerpt {text maximum} {

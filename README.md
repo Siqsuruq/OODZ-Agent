@@ -67,9 +67,9 @@ retry_delay_ms = 250
 [Agent]
 name = CoderBot
 role = You are a professional software engineering agent. Follow the user's requirements precisely, inspect relevant context, use available tools when appropriate, and produce focused, verified changes.
-max_iterations = 16
+max_iterations = 24
 max_history_messages = 200
-max_history_chars = 120000
+max_history_chars = 60000
 summarize_history = true
 
 [Workspace]
@@ -111,6 +111,11 @@ allowed_prefixes = {-n} {--files} {--version}
 [Executables]
 fossil = fossil
 
+[Diagnostics]
+enabled = true
+file = .oodz/diagnostics.jsonl
+max_events = 5000
+
 [GUI]
 theme_package = ttk::theme::Arc
 theme = Arc-Dark
@@ -143,15 +148,23 @@ Configuration fields:
   use exponential backoff.
 - `Agent.name`: Name used in agent log messages.
 - `Agent.role`: System instruction included before the conversation.
-- `Agent.max_iterations`: Maximum DeepSeek/tool cycles allowed for one task.
+- `Agent.max_iterations`: Maximum LLM response cycles allowed for one task.
+  Reaching the limit returns a recoverable checkpoint and preserves completed
+  changes so the user can review them and say `next`.
 - `Agent.max_history_messages`: Safety ceiling for prior message objects sent
   with a request. Complete tool-call turns are never split.
-- `Agent.max_history_chars`: Approximate character budget for prior messages.
-  This prevents large tool results from consuming an unbounded model context.
+- `Agent.max_history_chars`: Approximate character budget for model messages.
+  It bounds prior history and compacts oversized tool results and older tool
+  exchanges while a long task is still running.
 - `Agent.summarize_history`: When true, compact excluded complete turns into a
   persistent context summary containing prior requests, answers, and tool names.
 - `Agent.history_file`: JSON conversation history used by interactive mode,
   resolved relative to the project directory unless absolute.
+- `Diagnostics.enabled`: Collect provider-neutral runtime metrics for the GUI.
+- `Diagnostics.file`: Append-only JSON Lines event file, resolved relative to
+  the project directory unless absolute.
+- `Diagnostics.max_events`: Maximum retained structured events. Older events
+  are discarded when the limit is reached.
 - `ChangeTracking.enabled`: Show files added, modified, or deleted after every
   interactive agent turn, including turns that end with an error.
 - `ChangeTracking.excluded_directories`: Comma-separated directory names omitted
@@ -758,7 +771,10 @@ wish gui.tcl
 The desktop interface provides a conversation view, multiline input,
 streaming responses, persistent history, New/Send/Stop controls, and write approval
 dialogs. Its menu can edit the configured workspace instruction file, open the
-Tools and Skills dialogs, and display the application version. Saved workspace
+Tools, Skills, and Diagnostics windows, and display the application version.
+Diagnostics shows request and token totals when reported by the provider,
+tool usage and failures, skipped calls, average response time, and graphs of
+tool frequency and request-context size. Saved workspace
 instructions become active on the next request without restarting the agent or
 clearing its conversation. Stop aborts an active model HTTP request and prevents
 automatic retry or fallback for that request. Assistant Markdown is styled while it streams
@@ -1032,7 +1048,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 176 Passed 176 Skipped 0 Failed 0
+all.tcl: Total 182 Passed 182 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the

@@ -179,7 +179,7 @@ test cli-tool-1.2 {direct tool syntax has one shared parser} -body {
 
 test cli-translation-1.1 {translation shortcut builds one explicit task} -body {
     ::buildTranslationTask "  Policy number  "
-} -result "Translate the label 'Policy number' into native-script Portuguese, Simplified Chinese, Russian, French, Spanish, and English, then save it using save_translation. Never transliterate any language."
+} -result "Translate the label 'Policy number' into native-script Portuguese, Simplified Chinese, Russian, French, Spanish, and English, then save it using save_translation. Call save_translation directly after translating. Do not inspect workspace files or call any other tool. Never transliterate any language."
 
 test cli-multiline-1.1 {multiline mode preserves lines and supports cancellation} -body {
     set client [::FakeLLMClient new [list "multiline response"]]

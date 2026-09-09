@@ -252,7 +252,7 @@ test read-file-range-1.1 {read_file preserves full reads and supports numbered r
     "2: строка два\n3: 行三" \
     "3: 行三\n4: fourth"]
 
-test read-file-range-1.2 {read_file rejects invalid and excessive ranges} -body {
+test read-file-range-1.2 {read_file rejects invalid ranges and truncates excessive ones} -body {
     set temporaryRoot [file join [temporaryDirectory] \
         "read-range-errors-[pid]-[clock clicks]"]
     file mkdir $temporaryRoot
@@ -278,7 +278,7 @@ test read-file-range-1.2 {read_file rejects invalid and excessive ranges} -body 
 } -result [list \
     1 "start_line must be a positive integer" \
     1 "end_line must be an integer greater than or equal to start_line" \
-    1 "read_file ranges are limited to 200 lines" \
+    0 "Requested range truncated to lines 1-3.\n1: one\n2: two\n3: " \
     1 "start_line exceeds file length: sample.txt"]
 
 test oodz-read-1.1 {oodz_read returns confined bounded numbered UTF-8 lines} -body {

@@ -449,6 +449,17 @@ namespace eval ::PluginSupport {
         return $unavailablePlugins
     }
 
+    method activate {name} {
+        if {![dict exists $plugins $name]} {
+            if {[dict exists $unavailablePlugins $name]} {
+                error "Plugin is unavailable: $name ([dict get $unavailablePlugins $name])"
+            }
+            error "Unknown plugin: $name"
+        }
+        dict set activePlugins $name 1
+        return $name
+    }
+
     method definitions {{includeInactive false}} {
         set definitions {}
         if {$lazyLoading && !$includeInactive} {

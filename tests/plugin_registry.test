@@ -75,6 +75,33 @@ test plugins-lazy-1.1a {GUI-style discovery can request all definitions} -body {
     }
 } -result [list 1 1 1]
 
+test plugins-lazy-1.1b {a caller can activate one exact installed plugin} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]] \
+        "" 1000 65536 {} "" "" "" true [list read_file]]
+    try {
+        set before [lmap definition [$registry definitions] {
+            dict get $definition name
+        }]
+        set activated [$registry activate save_translation]
+        set after [lmap definition [$registry definitions] {
+            dict get $definition name
+        }]
+        set missingCode [catch {
+            $registry activate missing_plugin
+        } missingMessage]
+        list \
+            [expr {"save_translation" ni $before}] \
+            $activated \
+            [expr {"save_translation" in $after}] \
+            $missingCode $missingMessage
+    } finally {
+        $registry destroy
+    }
+} -result [list \
+    1 save_translation 1 \
+    1 "Unknown plugin: missing_plugin"]
+
 test plugins-metadata-1.0 {installed plugin definitions expose categories} -body {
     set registry [::tPluginRegistry new \
         $projectDir [list [file join $projectDir plugins]]]

@@ -14,6 +14,7 @@ package require zesty
 set ::tclReadlineAvailable [expr {![catch {package require tclreadline 2.4}]}]
 
 source [file join $scriptDir clientClass.tcl]
+source [file join $scriptDir diagnostics.tcl]
 source [file join $scriptDir agentClass.tcl]
 source [file join $scriptDir pluginWorker.tcl]
 source [file join $scriptDir pluginRegistry.tcl]
@@ -487,6 +488,8 @@ proc ::buildTranslationTask {label} {
         "Translate the label '$label' into native-script" \
         "Portuguese, Simplified Chinese, Russian, French, Spanish," \
         "and English, then save it using save_translation." \
+        "Call save_translation directly after translating." \
+        "Do not inspect workspace files or call any other tool." \
         "Never transliterate any language."] " "
 }
 
@@ -543,6 +546,13 @@ proc ::runInteractive {
         if {[regexp {^/oodz_trns(?:[[:space:]]+(.*))?$} $line -> translationLabel]} {
             if {![info exists translationLabel] || [string trim $translationLabel] eq ""} {
                 puts $errorChannel [::styleTerminalText $errorChannel "Usage: /oodz_trns label" {fg red}]
+                continue
+            }
+            if {[catch {
+                $pluginRegistry activate save_translation
+            } activationError]} {
+                puts $errorChannel [::styleTerminalText $errorChannel \
+                    "Cannot start translation: $activationError" {fg red bold 1}]
                 continue
             }
             set line [::buildTranslationTask $translationLabel]
@@ -678,6 +688,7 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
     set pluginWorker ""
     set historyStore ""
     set changeTracker ""
+    set diagnostics ""
     set logPath ""
     set ownsClient [expr {$clientObject eq ""}]
     set productionLogging [expr {$ownsClient && $outChannel eq "stdout" && $errChannel eq "stderr" }]
@@ -686,6 +697,16 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
         set backend [::Config::Backend::Ini new]
         $config useBackend $backend [file join $scriptDir conf conf.ini]
         $config load
+
+        set diagnosticsPath [$config get Diagnostics.file .oodz/diagnostics.jsonl]
+        if {[file pathtype $diagnosticsPath] ne "absolute"} {
+            set diagnosticsPath [file join $scriptDir $diagnosticsPath]
+        }
+        set diagnosticsEnabled [$config get Diagnostics.enabled true]
+        if {!$ownsClient} {set diagnosticsEnabled false}
+        set diagnostics [tDiagnostics new $diagnosticsPath \
+            $diagnosticsEnabled \
+            [$config get Diagnostics.max_events 5000]]
 
         if {$productionLogging} {
             set logPath [$config get Logging.file .oodz/oodz.log]
@@ -719,6 +740,9 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
 
         if {$ownsClient} {
             set aiEngine [tLLMClient new $config]
+        }
+        if {"setDiagnostics" in [info object methods $aiEngine -all]} {
+            $aiEngine setDiagnostics $diagnostics
         }
         set skillRegistry [tSkillRegistry new [::resolveSkillDirectories $scriptDir [$config get Skills.directories ""]] [$config get Skills.max_file_bytes 65536]]
         set instructionRegistry [tInstructionRegistry new $workspaceRoot [$config get Workspace.instructions ""] [$config get Workspace.instructions_max_file_bytes 16384] [$config get Workspace.instructions_max_total_bytes 65536]]
@@ -811,7 +835,8 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
         set pluginRegistry [tPluginRegistry new $workspaceRoot $pluginDirectories [list ::requestPluginApproval $inChannel $errChannel] [$config get Plugins.timeout_ms 1000] [$config get Plugins.max_output_chars 65536] $referenceRoots $skillRegistry $instructionRegistry $processRunner $pluginLazyLoading $pluginCore "" $pluginWorker $modelInfoCallback $commandExecutor]
         set systemRole [::buildAgentSystemRole $config $workspaceInstructions [$skillRegistry summaries] [$instructionRegistry enabled] $runnerEnabled $pluginLazyLoading]
         set systemRole [::addModelIdentityToSystemRole $systemRole $aiEngine]
-        set codingAgent [tAgent new [$config get Agent.name] $systemRole $aiEngine $pluginRegistry [$config get Agent.max_iterations 16] [expr {$interactive ? [list ::printStreamChunk $outChannel] : ""}] [$config get Agent.max_history_messages 200] [$config get Agent.summarize_history true] [$config get Agent.max_history_chars 120000]]
+        set codingAgent [tAgent new [$config get Agent.name] $systemRole $aiEngine $pluginRegistry [$config get Agent.max_iterations 24] [expr {$interactive ? [list ::printStreamChunk $outChannel] : ""}] [$config get Agent.max_history_messages 200] [$config get Agent.summarize_history true] [$config get Agent.max_history_chars 60000]]
+        $codingAgent setDiagnostics $diagnostics
 
         if {$interactive} {
             set readlineHistoryPath ""
@@ -865,7 +890,7 @@ proc ::main {scriptDir arguments {clientObject ""} {outChannel stdout} {errChann
                 && [info object isa object $aiEngine]} {
             $aiEngine destroy
         }
-        foreach object [list $historyStore $changeTracker $pluginRegistry $pluginWorker \
+        foreach object [list $historyStore $changeTracker $diagnostics $pluginRegistry $pluginWorker \
                 $commandExecutor $commandRunner $instructionRegistry \
                 $skillRegistry $processRunner \
                 $backend $config] {

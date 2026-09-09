@@ -12,7 +12,6 @@ system_info
 
 # Filesystem changes
 apply_patch
-create_file
 write_file
 edit_file
 copy_file

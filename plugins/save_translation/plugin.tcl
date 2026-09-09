@@ -33,6 +33,11 @@ proc ::plugins::save_translation::responseHeader {metadata wantedName} {
 }
 
 proc ::plugins::save_translation::decodeResponseBody {body} {
+    # http::data may already be a decoded Tcl Unicode string. Converting that
+    # value from bytes again fails when the response contains native script.
+    if {[regexp {[\u0100-\U0010ffff]} $body]} {
+        return $body
+    }
     if {![catch {encoding convertfrom utf-8 $body} decoded]} {
         return $decoded
     }
