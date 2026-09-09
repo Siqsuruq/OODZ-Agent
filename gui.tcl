@@ -17,6 +17,8 @@ namespace eval ::oodzGui {
     variable historyStore ""
     variable changeTracker ""
     variable diagnostics ""
+    variable diagnosticsRefreshAfter ""
+    variable diagnosticsRefreshInterval 10000
     variable workspaceRoot ""
     variable instructionPath ""
     variable approveAll 0
@@ -702,6 +704,7 @@ proc ::oodzGui::showTools {} {
 }
 
 proc ::oodzGui::close {} {
+    ::oodzGui::stopDiagnosticsRefresh
     foreach name {
         agent historyStore changeTracker diagnostics registry pluginWorker commandExecutor commandRunner \
         instructionRegistry skillRegistry processRunner client backend config
@@ -816,6 +819,37 @@ proc ::oodzGui::refreshDiagnostics {} {
     ::oodzGui::drawDiagnosticTimeline .diagnostics.contextChart [$diagnostics events]
 }
 
+proc ::oodzGui::stopDiagnosticsRefresh {} {
+    variable diagnosticsRefreshAfter
+    if {$diagnosticsRefreshAfter ne ""} {
+        after cancel $diagnosticsRefreshAfter
+        set diagnosticsRefreshAfter ""
+    }
+}
+
+proc ::oodzGui::scheduleDiagnosticsRefresh {} {
+    variable diagnosticsRefreshAfter
+    variable diagnosticsRefreshInterval
+    ::oodzGui::stopDiagnosticsRefresh
+    if {[winfo exists .diagnostics]} {
+        set diagnosticsRefreshAfter [after $diagnosticsRefreshInterval \
+            ::oodzGui::automaticDiagnosticsRefresh]
+    }
+}
+
+proc ::oodzGui::automaticDiagnosticsRefresh {} {
+    variable diagnosticsRefreshAfter
+    set diagnosticsRefreshAfter ""
+    if {![winfo exists .diagnostics]} {return}
+    ::oodzGui::refreshDiagnostics
+    ::oodzGui::scheduleDiagnosticsRefresh
+}
+
+proc ::oodzGui::closeDiagnostics {} {
+    ::oodzGui::stopDiagnosticsRefresh
+    catch {destroy .diagnostics}
+}
+
 proc ::oodzGui::clearDiagnostics {} {
     variable diagnostics
     $diagnostics clear
@@ -823,7 +857,8 @@ proc ::oodzGui::clearDiagnostics {} {
 }
 
 proc ::oodzGui::showDiagnostics {} {
-    catch {destroy .diagnostics}
+    variable diagnosticsRefreshInterval
+    ::oodzGui::closeDiagnostics
     toplevel .diagnostics
     wm title .diagnostics "OODZ Diagnostics"
     wm minsize .diagnostics 760 600
@@ -851,9 +886,12 @@ proc ::oodzGui::showDiagnostics {} {
     ttk::button .diagnostics.clear -text "Clear data" \
         -command ::oodzGui::clearDiagnostics
     ttk::button .diagnostics.close -text Close \
-        -command [list destroy .diagnostics]
+        -command ::oodzGui::closeDiagnostics
+    ttk::label .diagnostics.autoRefresh -text \
+        "Auto-refresh: [format %.1f [expr {$diagnosticsRefreshInterval / 1000.0}]] s"
     pack .diagnostics.refresh .diagnostics.clear -in .diagnostics.actions \
         -side left -padx {0 8}
+    pack .diagnostics.autoRefresh -in .diagnostics.actions -side left
     pack .diagnostics.close -in .diagnostics.actions -side right
     grid .diagnostics.cards -row 0 -column 0 -sticky ew
     grid .diagnostics.toolChart -row 1 -column 0 -sticky nsew -padx 10 -pady 5
@@ -864,7 +902,9 @@ proc ::oodzGui::showDiagnostics {} {
     grid columnconfigure .diagnostics 0 -weight 1
     bind .diagnostics.toolChart <Configure> {after idle ::oodzGui::refreshDiagnostics}
     bind .diagnostics.contextChart <Configure> {after idle ::oodzGui::refreshDiagnostics}
+    wm protocol .diagnostics WM_DELETE_WINDOW ::oodzGui::closeDiagnostics
     after idle ::oodzGui::refreshDiagnostics
+    ::oodzGui::scheduleDiagnosticsRefresh
 }
 
 proc ::oodzGui::maximizeWindow {} {
@@ -1067,6 +1107,7 @@ proc ::oodzGui::start {} {
     variable historyStore
     variable changeTracker
     variable diagnostics
+    variable diagnosticsRefreshInterval
     variable workspaceRoot
 
     set config [::Config new]
@@ -1090,6 +1131,12 @@ proc ::oodzGui::start {} {
     set diagnostics [tDiagnostics new $diagnosticsPath \
         [$config get Diagnostics.enabled true] \
         [$config get Diagnostics.max_events 5000]]
+    set diagnosticsRefreshInterval [$config get \
+        Diagnostics.refresh_interval_ms 10000]
+    if {![string is integer -strict $diagnosticsRefreshInterval]
+            || $diagnosticsRefreshInterval < 1000} {
+        error "Diagnostics.refresh_interval_ms must be an integer of at least 1000"
+    }
     set changeTrackingEnabled [$config get ChangeTracking.enabled true]
     if {![string is boolean -strict $changeTrackingEnabled]} {
         error "ChangeTracking.enabled must be boolean"

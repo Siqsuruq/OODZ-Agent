@@ -115,6 +115,7 @@ fossil = fossil
 enabled = true
 file = .oodz/diagnostics.jsonl
 max_events = 5000
+refresh_interval_ms = 10000
 
 [GUI]
 theme_package = ttk::theme::Arc
@@ -165,6 +166,8 @@ Configuration fields:
   the project directory unless absolute.
 - `Diagnostics.max_events`: Maximum retained structured events. Older events
   are discarded when the limit is reached.
+- `Diagnostics.refresh_interval_ms`: GUI Diagnostics auto-refresh interval in
+  milliseconds. The default is 10 seconds and the minimum is 1 second.
 - `ChangeTracking.enabled`: Show files added, modified, or deleted after every
   interactive agent turn, including turns that end with an error.
 - `ChangeTracking.excluded_directories`: Comma-separated directory names omitted
