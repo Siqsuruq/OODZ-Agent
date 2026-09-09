@@ -4,17 +4,23 @@ proc ::plugins::write_file::execute {workspaceRoot arguments settings} {
     set relativePath [dict get $arguments path]
     set path [::PluginSupport::resolveWorkspacePath \
         $workspaceRoot $relativePath]
-    set parent [file dirname $path]
-    if {![file isdirectory $parent]} {
-        error "Parent directory does not exist: [file dirname $relativePath]"
+    if {![file isfile $path]} {
+        error "File does not exist: $relativePath; use create_file for a new file"
     }
-
-    set channel [open $path w]
+    set temporaryChannel [file tempfile temporaryPath \
+        [file join [file dirname $path] .oodz-write-XXXXXX]]
     try {
-        fconfigure $channel -encoding utf-8
-        puts -nonewline $channel [dict get $arguments content]
+        fconfigure $temporaryChannel -encoding utf-8 -translation lf
+        puts -nonewline $temporaryChannel [dict get $arguments content]
+        close $temporaryChannel
+        set temporaryChannel ""
+        if {![catch {file attributes $path -permissions} permissions]} {
+            catch {file attributes $temporaryPath -permissions $permissions}
+        }
+        file rename -force $temporaryPath $path
     } finally {
-        close $channel
+        if {$temporaryChannel ne ""} {close $temporaryChannel}
+        if {[file exists $temporaryPath]} {file delete $temporaryPath}
     }
-    return "Wrote file: $relativePath"
+    return "Rewrote file: $relativePath"
 }

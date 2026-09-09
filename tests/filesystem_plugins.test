@@ -2,7 +2,7 @@
 
 source [file join [file dirname [file normalize [info script]]] support.tcl]
 
-test list-folders-1.1 {list_folders returns directories and omits files} -body {
+test list-directory-1.1 {list_directory returns immediate files and directories} -body {
     set root [file normalize [file join \
         [temporaryDirectory] list-folders-[pid]-[clock clicks]]]
     file mkdir [file join $root alpha] [file join $root .hidden] \
@@ -12,15 +12,15 @@ test list-folders-1.1 {list_folders returns directories and omits files} -body {
     set registry [tPluginRegistry new $root \
         [list [file join $projectDir plugins]]]
     try {
-        set rootResult [$registry invoke list_folders \
+        set rootResult [$registry invoke list_directory \
             [::json::write object]]
-        set nestedResult [$registry invoke list_folders \
+        set nestedResult [$registry invoke list_directory \
             [::json::write object path \
                 [::json::write string nested]]]
-        set missingCode [catch {$registry invoke list_folders \
+        set missingCode [catch {$registry invoke list_directory \
             [::json::write object path \
                 [::json::write string missing]]} missingMessage]
-        set escapeCode [catch {$registry invoke list_folders \
+        set escapeCode [catch {$registry invoke list_directory \
             [::json::write object path \
                 [::json::write string ../outside]]} escapeMessage]
         list $rootResult $nestedResult \
@@ -30,11 +30,11 @@ test list-folders-1.1 {list_folders returns directories and omits files} -body {
         file delete -force $root
     }
 } -result [list \
-    ".hidden/\nalpha/\nnested/" "child/" \
+    ".hidden/\nalpha/\nnested/\nvisible.txt" "child/" \
     1 "Directory does not exist: missing" \
     1 "Plugin path escapes the workspace"]
 
-test write-file-1.1 {write_file requires approval and writes exact content} -body {
+test create-file-1.1 {create_file requires approval, writes content, and refuses overwrite} -body {
     set temporaryRoot [file join [temporaryDirectory] \
         "oodz-write-test-[pid]-[clock clicks]"]
     file mkdir $temporaryRoot
@@ -49,13 +49,16 @@ test write-file-1.1 {write_file requires approval and writes exact content} -bod
     try {
         set ::ApprovalMock::approved 0
         set deniedResult [catch {
-            $registry invoke write_file $arguments
+            $registry invoke create_file $arguments
         } deniedMessage]
         set existsAfterDenial [file exists \
             [file join $temporaryRoot created.txt]]
 
         set ::ApprovalMock::approved 1
-        set approvedResult [$registry invoke write_file $arguments]
+        set approvedResult [$registry invoke create_file $arguments]
+        set repeatedCode [catch {
+            $registry invoke create_file $arguments
+        } repeatedMessage]
         set channel [open [file join $temporaryRoot created.txt] r]
         try {
             fconfigure $channel -encoding utf-8
@@ -66,16 +69,49 @@ test write-file-1.1 {write_file requires approval and writes exact content} -bod
 
         list \
             $deniedResult $deniedMessage $existsAfterDenial \
-            $approvedResult $writtenContent
+            $approvedResult $writtenContent $repeatedCode $repeatedMessage
     } finally {
         $registry destroy
         file delete -force $temporaryRoot
     }
 } -result [list \
-    1 "Plugin execution denied: write_file" 0 \
-    "Wrote file: created.txt" "hello café\n"]
+    1 "Plugin execution denied: create_file" 0 \
+    "Created file: created.txt" "hello café\n" \
+    1 "File already exists: created.txt"]
 
-test make-directory-1.1 {make_directory is approved, recursive, and confined} -body {
+test write-file-1.1 {write_file rewrites existing content and refuses creation} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-rewrite-test-[pid]-[clock clicks]"]
+    file mkdir $temporaryRoot
+    set target [file join $temporaryRoot existing.txt]
+    set channel [open $target w]
+    puts -nonewline $channel old
+    close $channel
+    set registry [::tPluginRegistry new $temporaryRoot \
+        [list [file join $projectDir plugins]] [list ::ApprovalMock::decide]]
+    set ::ApprovalMock::approved 1
+    try {
+        set rewritten [$registry invoke write_file [::json::write object \
+            path [::json::write string existing.txt] \
+            content [::json::write string "new content"]]]
+        set channel [open $target r]
+        set content [read $channel]
+        close $channel
+        set missingCode [catch {
+            $registry invoke write_file [::json::write object \
+                path [::json::write string new.txt] \
+                content [::json::write string nope]]
+        } missingMessage]
+        list $rewritten $content $missingCode $missingMessage \
+            [file exists [file join $temporaryRoot new.txt]]
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list "Rewrote file: existing.txt" "new content" \
+    1 "File does not exist: new.txt; use create_file for a new file" 0]
+
+test create-directory-1.1 {create_directory is approved, recursive, and confined} -body {
     set temporaryRoot [file join [temporaryDirectory] \
         "oodz-mkdir-test-[pid]-[clock clicks]"]
     file mkdir $temporaryRoot
@@ -95,21 +131,21 @@ test make-directory-1.1 {make_directory is approved, recursive, and confined} -b
     try {
         set ::ApprovalMock::approved 0
         set deniedCode [catch {
-            $registry invoke make_directory $nestedArguments
+            $registry invoke create_directory $nestedArguments
         } deniedMessage]
         set existsAfterDenial [file exists \
             [file join $temporaryRoot nested]]
 
         set ::ApprovalMock::approved 1
-        set created [$registry invoke make_directory $nestedArguments]
+        set created [$registry invoke create_directory $nestedArguments]
         set nestedExists [file isdirectory \
             [file join $temporaryRoot nested deep]]
-        set repeated [$registry invoke make_directory $nestedArguments]
+        set repeated [$registry invoke create_directory $nestedArguments]
         set escapeCode [catch {
-            $registry invoke make_directory $escapeArguments
+            $registry invoke create_directory $escapeArguments
         } escapeMessage]
         set occupiedCode [catch {
-            $registry invoke make_directory $occupiedArguments
+            $registry invoke create_directory $occupiedArguments
         } occupiedMessage]
 
         list \
@@ -122,13 +158,13 @@ test make-directory-1.1 {make_directory is approved, recursive, and confined} -b
         file delete -force $temporaryRoot
     }
 } -result [list \
-    1 "Plugin execution denied: make_directory" 0 \
+    1 "Plugin execution denied: create_directory" 0 \
     "Created directory: nested/deep" 1 \
     "Directory already exists: nested/deep" \
     1 "Plugin path escapes the workspace" \
     1 "Target exists and is not a directory: occupied"]
 
-test edit-file-1.1 {edit_file performs one approved exact replacement} -body {
+test replace-text-1.1 {replace_text performs one approved exact replacement} -body {
     set temporaryRoot [file join [temporaryDirectory] \
         "oodz-edit-test-[pid]-[clock clicks]"]
     file mkdir $temporaryRoot
@@ -148,18 +184,18 @@ test edit-file-1.1 {edit_file performs one approved exact replacement} -body {
     try {
         set ::ApprovalMock::approved 0
         set deniedCode [catch {
-            $registry invoke edit_file $exactArguments
+            $registry invoke replace_text $exactArguments
         } deniedMessage]
 
         set ::ApprovalMock::approved 1
-        set edited [$registry invoke edit_file $exactArguments]
+        set edited [$registry invoke replace_text $exactArguments]
         set channel [open $target r]
         fconfigure $channel -encoding utf-8
         set content [read $channel]
         close $channel
 
         set missingCode [catch {
-            $registry invoke edit_file [::json::write object \
+            $registry invoke replace_text [::json::write object \
                 path [::json::write string sample.txt] \
                 old_text [::json::write string absent] \
                 new_text [::json::write string replacement]]
@@ -169,7 +205,7 @@ test edit-file-1.1 {edit_file performs one approved exact replacement} -body {
         puts -nonewline $channel "same same"
         close $channel
         set ambiguousCode [catch {
-            $registry invoke edit_file [::json::write object \
+            $registry invoke replace_text [::json::write object \
                 path [::json::write string sample.txt] \
                 old_text [::json::write string same] \
                 new_text [::json::write string changed]]
@@ -185,8 +221,8 @@ test edit-file-1.1 {edit_file performs one approved exact replacement} -body {
         file delete -force $temporaryRoot
     }
 } -result [list \
-    1 "Plugin execution denied: edit_file" \
-    "Edited file: sample.txt" "alpha\nedited\nomega\n" \
+    1 "Plugin execution denied: replace_text" \
+    "Replaced text in: sample.txt" "alpha\nedited\nomega\n" \
     1 "old_text was not found in: sample.txt" \
     1 "old_text appears more than once in: sample.txt"]
 

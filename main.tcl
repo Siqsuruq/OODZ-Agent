@@ -44,7 +44,9 @@ proc ::buildAgentSystemRole {
         " calls before you either implement, provide the answer, or ask one concise clarification question." \
         " Do not keep searching for examples after you have enough information to follow the framework conventions." \
         " Project workspace instructions are already present in this system message; do not read their file again with a tool." \
-        " If an essential detail such as the destination filename is missing, ask the user instead of performing more research."
+        " If an essential detail such as the destination filename is missing, ask the user instead of performing more research." \
+        " Filesystem tool routing is strict: use create_directory for a new folder; create_file with path and complete content for a new file; write_file only to replace the complete content of an existing file; replace_text for one exact change in an existing file; apply_patch for multiple exact changes; list_directory only for one known directory; find_files to locate names recursively; and search_text only to find text inside files." \
+        " Never use replace_text, write_file, or apply_patch to create a new file."
     if {[llength $skillSummaries] > 0} {
         append systemRole "\n\nAvailable skills (name - trigger description):"
         foreach summary $skillSummaries {

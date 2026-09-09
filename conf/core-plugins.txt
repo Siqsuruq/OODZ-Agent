@@ -3,8 +3,7 @@
 
 # Filesystem inspection
 read_file
-list_files
-list_folders
+list_directory
 find_files
 search_text
 file_info
@@ -12,9 +11,10 @@ system_info
 
 # Filesystem changes
 apply_patch
+create_file
 write_file
-edit_file
+replace_text
 copy_file
 move_file
 delete_file
-make_directory
+create_directory

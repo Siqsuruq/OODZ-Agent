@@ -130,7 +130,7 @@ test cli-tool-1.1 {interactive tool command bypasses the LLM client} -body {
     set errChannel [file tempfile errPath]
 
     try {
-        puts $inputChannel {/tool list_files {}}
+        puts $inputChannel {/tool list_directory {}}
         puts $inputChannel /exit
         flush $inputChannel
         seek $inputChannel 0
@@ -162,7 +162,7 @@ test cli-tool-1.1 {interactive tool command bypasses the LLM client} -body {
 test cli-tool-1.2 {direct tool syntax has one shared parser} -body {
     set results {}
     foreach command [list \
-        {/tool list_files} \
+        {/tool list_directory} \
         {/tool read_file {"path":"main.tcl"}} \
         {/tool} \
         {ordinary model request}] {
@@ -172,7 +172,7 @@ test cli-tool-1.2 {direct tool syntax has one shared parser} -body {
     }
     set results
 } -result [list \
-    0 [list list_files "{}"] \
+    0 [list list_directory "{}"] \
     0 [list read_file {{"path":"main.tcl"}}] \
     1 "Usage: /tool name ?JSON arguments?" \
     1 "Not a direct tool command"]

@@ -811,7 +811,7 @@ produces it. Interactive commands:
 For example:
 
 ```text
-/tool list_files {}
+/tool list_directory {}
 /tool file_info {"path":"main.tcl"}
 /tool xml_validate {"path":"layout.xml"}
 /tool sqitch_add {"change":"add_users","note":"Add the users table"}
@@ -1001,7 +1001,7 @@ tclsh main.tcl \
   "Create agent-write-test.txt containing exactly: DeepSeek agent write test"
 ```
 
-If DeepSeek selects `write_file`, the CLI displays the plugin name and target
+If DeepSeek selects `create_file`, the CLI displays the plugin name and target
 path. Enter `y` or `yes` to allow that one write; any other response denies it.
 Inspect and remove the disposable file after the test.
 
@@ -1048,7 +1048,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 182 Passed 182 Skipped 0 Failed 0
+all.tcl: Total 183 Passed 183 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the
@@ -1060,11 +1060,12 @@ The supported path is:
 
 ```text
 CLI -> tAgent -> DeepSeek
-               -> plugin registry -> read_file/list_files/list_folders/find_files/search_text/file_info/system_info/xml_validate
+               -> plugin registry -> read_file/list_directory/find_files/search_text/file_info/system_info/xml_validate
                                      oodz_lookup/oodz_search/oodz_read
                                      save_translation
-                                     make_directory/edit_file/apply_patch
-                                     copy_file/move_file/delete_file/write_file
+                                     create_directory/create_file/write_file
+                                     replace_text/apply_patch
+                                     copy_file/move_file/delete_file
                                      zip/unzip
                                      random_string
 ```

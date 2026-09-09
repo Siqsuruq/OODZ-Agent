@@ -16,7 +16,7 @@ test diagnostics-1.1 {structured events persist and summarize provider-neutral m
         $collector record tool_call [dict create name read_file]
         $collector record tool_call [dict create name read_file]
         $collector record tool_failure [dict create name read_file]
-        $collector record tool_skipped [dict create name edit_file]
+        $collector record tool_skipped [dict create name replace_text]
         $collector record context_compaction [dict create omitted_groups 3]
         $collector destroy
         set collector [::tDiagnostics new $path true 100]

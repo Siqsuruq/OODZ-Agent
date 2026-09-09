@@ -9,7 +9,7 @@ test plugins-1.1 {built-in plugins are discovered and invoked} -body {
     try {
         set fileContent [$registry invoke read_file [::json::write object \
             path [::json::write string "main.tcl"]]]
-        set fileList [$registry invoke list_files [::json::write object]]
+        set fileList [$registry invoke list_directory [::json::write object]]
 
         list \
             [$registry names] \
@@ -23,15 +23,15 @@ test plugins-1.1 {built-in plugins are discovered and invoked} -body {
         $registry destroy
     }
 } -result [list \
-    [list apply_patch copy_file create_file delete_file edit_file file_info find_files fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_clone fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_files list_folders make_directory move_file oodz_lookup oodz_read oodz_search open_browser random_string read_file save_translation search_text sqitch_add sqitch_deploy sqitch_log sqitch_plan sqitch_revert sqitch_rework sqitch_show sqitch_status sqitch_tag sqitch_verify system_info unzip web_search write_file xml_validate zip] \
+    [list apply_patch copy_file create_directory create_file delete_file file_info find_files fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_clone fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_directory move_file oodz_lookup oodz_read oodz_search open_browser random_string read_file replace_text save_translation search_text sqitch_add sqitch_deploy sqitch_log sqitch_plan sqitch_revert sqitch_rework sqitch_show sqitch_status sqitch_tag sqitch_verify system_info unzip web_search write_file xml_validate zip] \
     1 1 1 \
-    [list apply_patch copy_file create_file delete_file edit_file file_info find_files fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_clone fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_files list_folders make_directory move_file oodz_lookup oodz_read oodz_search open_browser random_string read_file save_translation search_text sqitch_add sqitch_deploy sqitch_log sqitch_plan sqitch_revert sqitch_rework sqitch_show sqitch_status sqitch_tag sqitch_verify system_info unzip web_search write_file xml_validate zip]]
+    [list apply_patch copy_file create_directory create_file delete_file file_info find_files fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_clone fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_directory move_file oodz_lookup oodz_read oodz_search open_browser random_string read_file replace_text save_translation search_text sqitch_add sqitch_deploy sqitch_log sqitch_plan sqitch_revert sqitch_rework sqitch_show sqitch_status sqitch_tag sqitch_verify system_info unzip web_search write_file xml_validate zip]]
 
 test plugins-lazy-1.1 {lazy registry exposes core tools and activates index matches} -body {
     set registry [::tPluginRegistry new \
         $projectDir [list [file join $projectDir plugins]] \
         "" 1000 65536 {} "" "" "" true \
-        [list read_file list_files]]
+        [list read_file list_directory]]
     try {
         set initial [lmap definition [$registry definitions] {
             dict get $definition name
@@ -50,9 +50,9 @@ test plugins-lazy-1.1 {lazy registry exposes core tools and activates index matc
         $registry destroy
     }
 } -result [list \
-    [list list_files read_file search_plugins] \
+    [list list_directory read_file search_plugins] \
     1 \
-    [list list_files read_file search_plugins xml_validate] \
+    [list list_directory read_file search_plugins xml_validate] \
     1]
 
 test plugins-lazy-1.1a {GUI-style discovery can request all definitions} -body {
@@ -230,7 +230,7 @@ test plugins-1.2 {plugin calls reject invalid names, arguments, and paths} -body
             unknown [::json::write object] \
             read_file "not JSON" \
             read_file [::json::write object] \
-            list_files [::json::write object \
+            list_directory [::json::write object \
                 extra [::json::write string "value"]] \
             read_file [::json::write object \
                 path [::json::write string "../outside"]]] {
@@ -246,7 +246,7 @@ test plugins-1.2 {plugin calls reject invalid names, arguments, and paths} -body
     1 "Unknown plugin: unknown" \
     1 "Invalid JSON arguments for plugin: read_file" \
     1 "Missing plugin argument for read_file: path" \
-    1 "Unknown plugin argument for list_files: extra" \
+    1 "Unknown plugin argument for list_directory: extra" \
     1 "Plugin path escapes the workspace"]
 
 test plugins-1.3 {plugin discovery rejects invalid and duplicate manifests} -body {

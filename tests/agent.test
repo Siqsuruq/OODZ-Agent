@@ -210,7 +210,7 @@ test agent-loop-1.1 {agent executes a plugin and returns the final answer} -body
 } -result [list \
     "Inspection complete." \
     2 \
-    [list apply_patch copy_file create_file delete_file edit_file file_info find_files fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_clone fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_files list_folders make_directory move_file oodz_lookup oodz_read oodz_search open_browser random_string read_file save_translation search_text sqitch_add sqitch_deploy sqitch_log sqitch_plan sqitch_revert sqitch_rework sqitch_show sqitch_status sqitch_tag sqitch_verify system_info unzip web_search write_file xml_validate zip] \
+    [list apply_patch copy_file create_directory create_file delete_file file_info find_files fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_clone fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_directory move_file oodz_lookup oodz_read oodz_search open_browser random_string read_file replace_text save_translation search_text sqitch_add sqitch_deploy sqitch_log sqitch_plan sqitch_revert sqitch_rework sqitch_show sqitch_status sqitch_tag sqitch_verify system_info unzip web_search write_file xml_validate zip] \
     "I should inspect main.tcl." \
     tool \
     call_read \
@@ -219,9 +219,9 @@ test agent-loop-1.1 {agent executes a plugin and returns the final answer} -body
 
 test agent-loop-1.2 {tool-loop requests are re-bounded each iteration} -body {
     set firstCall [dict create id call_1 type function function [dict create \
-        name list_files arguments {{}}]]
+        name list_directory arguments {{}}]]
     set secondCall [dict create id call_2 type function function [dict create \
-        name list_files arguments {{}}]]
+        name list_directory arguments {{}}]]
     set client [::StructuredFakeLLMClient new [list \
         [dict create role assistant content "" tool_calls [list $firstCall]] \
         [dict create role assistant content "" tool_calls [list $secondCall]] \
@@ -289,7 +289,7 @@ test agent-loop-lazy-1.1 {agent refreshes definitions after plugin search} -body
 
 test agent-loop-guards-1.1 {only the first tool in one response is executed} -body {
     set firstCall [dict create id call_first type function function \
-        [dict create name list_files arguments {{}}]]
+        [dict create name list_directory arguments {{}}]]
     set extraCall [dict create id call_extra type function function \
         [dict create name system_info arguments {{}}]]
     set client [::StructuredFakeLLMClient new [list \
@@ -318,7 +318,7 @@ test agent-loop-guards-1.1 {only the first tool in one response is executed} -bo
 
 test agent-loop-guards-1.2 {consecutive identical tool calls are skipped} -body {
     set toolCall [dict create id call_repeat type function function \
-        [dict create name list_files arguments {{}}]]
+        [dict create name list_directory arguments {{}}]]
     set client [::StructuredFakeLLMClient new [list \
         [dict create role assistant content "" tool_calls [list $toolCall]] \
         [dict create role assistant content "" tool_calls [list $toolCall]] \
@@ -372,7 +372,7 @@ test agent-loop-1.2 {agent checkpoints at the configured iteration limit} -body 
     set toolCall [dict create \
         id "call_list" \
         type "function" \
-        function [dict create name list_files arguments $arguments]]
+        function [dict create name list_directory arguments $arguments]]
     set response [dict create \
         role assistant content "" tool_calls [list $toolCall]]
     set client [::StructuredFakeLLMClient new [list \
@@ -403,7 +403,7 @@ test agent-loop-1.2 {agent checkpoints at the configured iteration limit} -body 
 } -result [list \
     0 "Reached the per-request work limit of 2 model iterations. Completed changes have been preserved. Review the reported changes, then say 'next' to continue." \
     continued [list user assistant tool assistant tool assistant] \
-    list_files \
+    list_directory \
     "Reached the per-request work limit of 2 model iterations. Completed changes have been preserved. Review the reported changes, then say 'next' to continue." \
     [list user assistant tool assistant tool assistant user]]
 

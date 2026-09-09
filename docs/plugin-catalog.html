@@ -19,9 +19,9 @@
       <tbody>
         <tr><td><code>apply_patch</code></td><td><span class="permission write">write</span></td><td>Apply exact search-and-replace blocks atomically to an existing UTF-8 file.</td></tr>
         <tr><td><code>copy_file</code></td><td><span class="permission write">write</span></td><td>Copy one workspace file without overwriting the destination.</td></tr>
-        <tr><td><code>create_file</code></td><td><span class="permission write">write</span></td><td>Create a new file inside the workspace.</td></tr>
+        <tr><td><code>create_directory</code></td><td><span class="permission write">write</span></td><td>Create a directory and missing parents inside the workspace.</td></tr>
+        <tr><td><code>create_file</code></td><td><span class="permission write">write</span></td><td>Create a new UTF-8 file with complete content; refuse an existing path.</td></tr>
         <tr><td><code>delete_file</code></td><td><span class="permission write">write</span></td><td>Delete one workspace file; directory deletion is refused.</td></tr>
-        <tr><td><code>edit_file</code></td><td><span class="permission write">write</span></td><td>Replace one unique exact fragment in a UTF-8 workspace file.</td></tr>
         <tr><td><code>file_info</code></td><td><span class="permission read">read</span></td><td>Report a workspace path's type, size, modification time, and permissions.</td></tr>
         <tr><td><code>find_files</code></td><td><span class="permission read">read</span></td><td>Recursively find files or directories by case-insensitive name glob.</td></tr>
         <tr><td><code>fossil_add</code></td><td><span class="permission write">write</span></td><td>Schedule one existing file for addition to the next Fossil commit.</td></tr>
@@ -56,9 +56,7 @@
         <tr><td><code>http_patch</code></td><td><span class="permission write">write</span></td><td>Send a JSON PATCH request to a configured scoped service.</td></tr>
         <tr><td><code>http_post</code></td><td><span class="permission write">write</span></td><td>Send a JSON POST request to a configured scoped service.</td></tr>
         <tr><td><code>http_put</code></td><td><span class="permission write">write</span></td><td>Send a JSON PUT request to a configured scoped service.</td></tr>
-        <tr><td><code>list_files</code></td><td><span class="permission read">read</span></td><td>List files and directories at a workspace-relative path.</td></tr>
-        <tr><td><code>list_folders</code></td><td><span class="permission read">read</span></td><td>List only immediate folders at a workspace-relative path.</td></tr>
-        <tr><td><code>make_directory</code></td><td><span class="permission write">write</span></td><td>Create a directory and missing parents inside the workspace.</td></tr>
+        <tr><td><code>list_directory</code></td><td><span class="permission read">read</span></td><td>List files and directories at a workspace-relative path.</td></tr>
         <tr><td><code>move_file</code></td><td><span class="permission write">write</span></td><td>Move or rename one file without overwriting the destination.</td></tr>
         <tr><td><code>oodz_lookup</code></td><td><span class="permission read">read</span></td><td>Search the compact OODZ framework capability index.</td></tr>
         <tr><td><code>oodz_read</code></td><td><span class="permission read">read</span></td><td>Read a bounded numbered range from OODZ reference source.</td></tr>
@@ -66,6 +64,7 @@
         <tr><td><code>open_browser</code></td><td><span class="permission write">write</span><small> Linux, Windows</small></td><td>Open the default browser at a blank page or approved HTTP(S) URL.</td></tr>
         <tr><td><code>random_string</code></td><td><span class="permission read">read</span></td><td>Generate bounded non-cryptographic random test data.</td></tr>
         <tr><td><code>read_file</code></td><td><span class="permission read">read</span></td><td>Read a UTF-8 file or a bounded numbered line range.</td></tr>
+        <tr><td><code>replace_text</code></td><td><span class="permission write">write</span></td><td>Replace one unique exact fragment in an existing UTF-8 workspace file.</td></tr>
         <tr><td><code>save_translation</code></td><td><span class="permission write">write</span></td><td>Save a label and six translations to the configured service.</td></tr>
         <tr><td><code>search_text</code></td><td><span class="permission read">read</span></td><td>Search UTF-8 workspace files for case-insensitive literal text.</td></tr>
         <tr><td><code>sqitch_add</code></td><td><span class="permission write">write</span></td><td>Add one change to the default plan and generate its standard scripts.</td></tr>
@@ -81,7 +80,7 @@
         <tr><td><code>system_info</code></td><td><span class="permission read">read</span></td><td>Report OS, architecture, Tcl, threads, executable, and workspace.</td></tr>
         <tr><td><code>unzip</code></td><td><span class="permission write">write</span></td><td>Extract a bounded ZIP into a new directory without overwriting.</td></tr>
         <tr><td><code>web_search</code></td><td><span class="permission read">read</span></td><td>Search through ordered fixed SearXNG instances with automatic fallback and return up to 10 results.</td></tr>
-        <tr><td><code>write_file</code></td><td><span class="permission write">write</span></td><td>Write UTF-8 text to a workspace-relative file.</td></tr>
+        <tr><td><code>write_file</code></td><td><span class="permission write">write</span></td><td>Replace the complete content of an existing UTF-8 workspace file.</td></tr>
         <tr><td><code>xml_validate</code></td><td><span class="permission read">read</span></td><td>Check that a UTF-8 XML file is well-formed and report its root.</td></tr>
         <tr><td><code>zip</code></td><td><span class="permission write">write</span></td><td>Create a ZIP from a workspace directory without overwriting.</td></tr>
       </tbody>

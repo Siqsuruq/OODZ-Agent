@@ -73,6 +73,8 @@ test plugin-worker-1.3 {registry keeps write approval before worker dispatch} -b
         $root [list [file join $projectDir plugins]] \
         ::ApprovalMock::decide 1000 65536 {} "" "" "" \
         false {} "" $worker]
+    set channel [open [file join $root result.txt] w]
+    close $channel
     try {
         set ::ApprovalMock::approved 0
         set denied [catch {
@@ -95,7 +97,7 @@ test plugin-worker-1.3 {registry keeps write approval before worker dispatch} -b
     }
 } -result [list \
     1 "Plugin execution denied: write_file" \
-    "Wrote file: result.txt" threaded]
+    "Rewrote file: result.txt" threaded]
 
 test plugin-worker-1.4 {synchronous compatibility keeps event loop responsive} -body {
     set ::workerEventProcessed 0
