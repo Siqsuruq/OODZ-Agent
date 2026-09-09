@@ -245,7 +245,7 @@ test client-json-1.4 {DeepSeek payload includes plugin tool definitions} -body {
         $registry destroy
         $config destroy
     }
-} -result [list 66 false disabled function read_file object [list path]]
+} -result [list 68 false disabled function read_file object [list path]]
 
 test client-cancel-1.1 {cancelled requests stop before transport retries} -body {
     set config [::FakeConfig new [dict create \

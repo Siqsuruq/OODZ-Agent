@@ -16,5 +16,7 @@ write_file
 replace_text
 copy_file
 move_file
+move_directory
 delete_file
+delete_directory
 create_directory

@@ -1051,7 +1051,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 183 Passed 183 Skipped 0 Failed 0
+all.tcl: Total 185 Passed 185 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the
@@ -1068,7 +1068,8 @@ CLI -> tAgent -> DeepSeek
                                      save_translation
                                      create_directory/create_file/write_file
                                      replace_text/apply_patch
-                                     copy_file/move_file/delete_file
+                                     copy_file/move_file/move_directory
+                                     delete_file/delete_directory
                                      zip/unzip
                                      random_string
 ```

@@ -280,6 +280,143 @@ test filesystem-mutations-1.1 {copy, move, and delete files safely} -body {
     "Deleted file: moved.txt" 0 \
     1 "Path is not a file: nested"]
 
+test delete-directory-1.1 {directory deletion is conservative and workspace confined} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-delete-directory-test-[pid]-[clock clicks]"]
+    file mkdir [file join $temporaryRoot empty]
+    file mkdir [file join $temporaryRoot populated child]
+    set channel [open [file join $temporaryRoot populated child data.txt] w]
+    puts -nonewline $channel data
+    close $channel
+    set channel [open [file join $temporaryRoot regular.txt] w]
+    close $channel
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]] \
+        [list ::ApprovalMock::decide]]
+
+    try {
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $registry invoke delete_directory [::json::write object \
+                path [::json::write string empty]]
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set deleted [$registry invoke delete_directory [::json::write object \
+            path [::json::write string empty]]]
+        set nonemptyCode [catch {
+            $registry invoke delete_directory [::json::write object \
+                path [::json::write string populated]]
+        } nonemptyMessage]
+        set recursiveResult [$registry invoke delete_directory \
+            [::json::write object \
+                path [::json::write string populated] \
+                recursive true]]
+        set rootCode [catch {
+            $registry invoke delete_directory [::json::write object \
+                path [::json::write string .]]
+        } rootMessage]
+        set fileCode [catch {
+            $registry invoke delete_directory [::json::write object \
+                path [::json::write string regular.txt]]
+        } fileMessage]
+        set escapeCode [catch {
+            $registry invoke delete_directory [::json::write object \
+                path [::json::write string ../outside]]
+        } escapeMessage]
+
+        list $deniedCode $deniedMessage \
+            $deleted [file exists [file join $temporaryRoot empty]] \
+            $nonemptyCode $nonemptyMessage \
+            $recursiveResult [file exists [file join $temporaryRoot populated]] \
+            $rootCode $rootMessage $fileCode $fileMessage \
+            $escapeCode $escapeMessage
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    1 "Plugin execution denied: delete_directory" \
+    "Deleted directory: empty" 0 \
+    1 "Directory is not empty: populated; use recursive=true to delete its contents" \
+    "Deleted directory recursively: populated" 0 \
+    1 "The workspace root cannot be deleted" \
+    1 "Path is not a directory: regular.txt" \
+    1 "Plugin path escapes the workspace"]
+
+test move-directory-1.1 {directories can be renamed and moved without unsafe targets} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-move-directory-test-[pid]-[clock clicks]"]
+    file mkdir [file join $temporaryRoot source child]
+    file mkdir [file join $temporaryRoot archive]
+    file mkdir [file join $temporaryRoot occupied]
+    set channel [open [file join $temporaryRoot source child data.txt] w]
+    puts -nonewline $channel data
+    close $channel
+    set channel [open [file join $temporaryRoot regular.txt] w]
+    close $channel
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]] \
+        [list ::ApprovalMock::decide]]
+
+    try {
+        set arguments [::json::write object \
+            source [::json::write string source] \
+            destination [::json::write string renamed]]
+        set ::ApprovalMock::approved 0
+        set deniedCode [catch {
+            $registry invoke move_directory $arguments
+        } deniedMessage]
+        set ::ApprovalMock::approved 1
+        set renamed [$registry invoke move_directory $arguments]
+        set moved [$registry invoke move_directory [::json::write object \
+            source [::json::write string renamed] \
+            destination [::json::write string archive/moved]]]
+        set contentExists [file isfile \
+            [file join $temporaryRoot archive moved child data.txt]]
+        set occupiedCode [catch {
+            $registry invoke move_directory [::json::write object \
+                source [::json::write string archive/moved] \
+                destination [::json::write string occupied]]
+        } occupiedMessage]
+        set nestedCode [catch {
+            $registry invoke move_directory [::json::write object \
+                source [::json::write string archive/moved] \
+                destination [::json::write string archive/moved/child/new]]
+        } nestedMessage]
+        set rootCode [catch {
+            $registry invoke move_directory [::json::write object \
+                source [::json::write string .] \
+                destination [::json::write string elsewhere]]
+        } rootMessage]
+        set fileCode [catch {
+            $registry invoke move_directory [::json::write object \
+                source [::json::write string regular.txt] \
+                destination [::json::write string renamed-file]]
+        } fileMessage]
+        set parentCode [catch {
+            $registry invoke move_directory [::json::write object \
+                source [::json::write string archive/moved] \
+                destination [::json::write string missing/moved]]
+        } parentMessage]
+
+        list $deniedCode $deniedMessage $renamed $moved $contentExists \
+            $occupiedCode $occupiedMessage $nestedCode $nestedMessage \
+            $rootCode $rootMessage $fileCode $fileMessage \
+            $parentCode $parentMessage
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    1 "Plugin execution denied: move_directory" \
+    "Moved directory: source -> renamed" \
+    "Moved directory: renamed -> archive/moved" 1 \
+    1 "Destination already exists: occupied" \
+    1 "A directory cannot be moved inside itself: archive/moved/child/new" \
+    1 "The workspace root cannot be moved" \
+    1 "Source path is not a directory: regular.txt" \
+    1 "Destination parent directory does not exist: missing"]
+
 test apply-patch-1.1 {apply_patch makes multiple exact changes atomically} -body {
     set temporaryRoot [file join [temporaryDirectory] \
         "oodz-patch-test-[pid]-[clock clicks]"]
