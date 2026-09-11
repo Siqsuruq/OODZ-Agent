@@ -84,7 +84,7 @@
             set newMessages [lrange $requestMessages \
                 [llength $requestHistory] end]
             set memory [concat $memory $newMessages]
-            return -code error $errMsg
+            return -options $errOptions $errMsg
         }
 
         set newMessages [lrange $requestMessages \
@@ -121,6 +121,13 @@
                 set assistantMessage [$llmClient queryMessage $systemRole $activeMessages $tools]
             }
             my checkCancelled
+
+            if {[dict getdef $assistantMessage finish_reason ""] eq "length"} {
+                lappend messages $assistantMessage
+                my diagnostic response_truncated [dict create reason length]
+                return -code error -errorcode {OODZ TRUNCATED} \
+                    "Model response was truncated because its output token limit was reached"
+            }
 
             if {![dict exists $assistantMessage tool_calls] || [llength [dict get $assistantMessage tool_calls]] == 0} {
                 lappend messages $assistantMessage
@@ -257,8 +264,12 @@
         }
 
         set selected {}
-        set selectedCount 0
-        set selectedChars 0
+        # System-prefix messages, including the persisted conversation summary,
+        # consume the same request budget as ordinary history. Ignoring them can
+        # produce an oversized intermediate window that boundedModelMessages
+        # resolves by retaining only the newest user message.
+        set selectedCount [llength $prefix]
+        set selectedChars [my messagesSize $prefix]
         for {set index [expr {[llength $turns] - 1}]} {$index >= 0} {incr index -1} {
             set turn [lindex $turns $index]
             set turnSize [llength $turn]

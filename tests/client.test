@@ -31,7 +31,9 @@ test client-ollama-1.1 {Ollama works without authorization or DeepSeek fields} -
         LLM.max_retries 0]]
     set responseBody [::json::write object \
         choices [::json::write array \
-            [::json::write object message [::json::write object \
+            [::json::write object \
+                finish_reason [::json::write string stop] \
+                message [::json::write object \
                 role [::json::write string assistant] \
                 content [::json::write string "local response"]]]]]
     set transport [::FakeTransport new [list \
@@ -50,13 +52,14 @@ test client-ollama-1.1 {Ollama works without authorization or DeepSeek fields} -
             [dict get $payload model] \
             [dict exists $payload tools] \
             [dict exists $payload thinking] \
-            [dict exists $payload parallel_tool_calls]
+            [dict exists $payload parallel_tool_calls] \
+            [dict get $result finish_reason]
     } finally {
         $client destroy
         $transport destroy
         $config destroy
     }
-} -result [list "local response" {} qwen3 1 0 0]
+} -result [list "local response" {} qwen3 1 0 0 stop]
 
 test client-tls-1.1 {TLS registration uses supported option names} -body {
     set sourceChannel [open [file join $projectDir clientClass.tcl] r]
@@ -327,7 +330,9 @@ test client-stream-1.1 {streaming assembles content and tool-call deltas} -body 
             [::json::write object delta [::json::write object \
                 content [::json::write string "Checking..."]]]]] \
         [::json::write object choices [::json::write array \
-            [::json::write object delta [::json::write object \
+            [::json::write object \
+                finish_reason [::json::write string tool_calls] \
+                delta [::json::write object \
                 tool_calls [::json::write array \
                     [::json::write object \
                         index 0 \
@@ -369,7 +374,8 @@ test client-stream-1.1 {streaming assembles content and tool-call deltas} -body 
             [dict get $call type] \
             [dict get $call function name] \
             [::json::json2dict [dict get $call function arguments]] \
-            [dict get [$client modelInfo] reported_model]
+            [dict get [$client modelInfo] reported_model] \
+            [dict get $message finish_reason]
     } finally {
         $client destroy
         $transport destroy
@@ -384,7 +390,8 @@ test client-stream-1.1 {streaming assembles content and tool-call deltas} -body 
     "function" \
     "read_file" \
     [dict create path main.tcl] \
-    streaming-model]
+    streaming-model \
+    tool_calls]
 
 test client-stream-1.2 {empty stream falls back to a visible buffered response} -body {
     set config [::FakeConfig new [dict create \

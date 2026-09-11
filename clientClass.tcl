@@ -108,7 +108,7 @@ package require json::write
 ::oo::class create tLLMClient {
     variable log provider apiKey modelUrl modelName timeout
     variable maxRetries retryDelay transport ownsTransport
-    variable streamingMessage streamingToolCalls thinkingEnabled
+    variable streamingMessage streamingToolCalls streamingFinishReason thinkingEnabled
     variable reportedModel cancelRequested diagnostics
 
     constructor {configObj {transportObj ""}} {
@@ -175,6 +175,10 @@ package require json::write
         set message [my queryMessage $systemPrompt $messages]
         if {![dict exists $message content]} {
             error "Parsing Error: response has no message content"
+        }
+        if {[dict getdef $message finish_reason ""] eq "length"} {
+            return -code error -errorcode {OODZ TRUNCATED} \
+                "Model response was truncated because its output token limit was reached"
         }
         return [dict get $message content]
     }
@@ -289,9 +293,17 @@ package require json::write
             if {![catch {::json::json2dict $body} parsedBody]} {
                 my recordUsage $parsedBody
             }
-            my diagnostic llm_response [dict create mode standard code $code \
+            set message [my parseResponseMessage $body]
+            set details [dict create mode standard code $code \
                 duration_ms [expr {[clock milliseconds] - $requestStarted}]]
-            return [my parseResponseMessage $body]
+            set finishReason [dict getdef $message finish_reason ""]
+            if {$finishReason ne ""} {
+                dict set details finish_reason $finishReason
+                $log log [expr {$finishReason eq "length" ? "warn" : "info"}] \
+                    "LLM response completed with finish_reason=$finishReason"
+            }
+            my diagnostic llm_response $details
+            return $message
         }
     }
 
@@ -307,6 +319,7 @@ package require json::write
         set payload [my buildPayload $systemPrompt $messages $tools 1]
         set streamingMessage [dict create role assistant content ""]
         set streamingToolCalls [dict create]
+        set streamingFinishReason ""
 
         if {[catch {
             $transport postStream $modelUrl $payload [my requestHeaders] $timeout [list [self] consumeStreamEvent $contentCallback]
@@ -366,6 +379,9 @@ package require json::write
             }
             dict set streamingMessage tool_calls $calls
         }
+        if {$streamingFinishReason ne ""} {
+            dict set streamingMessage finish_reason $streamingFinishReason
+        }
         if {[string trim [dict get $streamingMessage content]] eq "" && ![dict exists $streamingMessage tool_calls]} {
             $log log warn "Streaming response was empty; retrying without streaming"
             set fallbackMessage [my queryMessage $systemPrompt $messages $tools]
@@ -374,8 +390,14 @@ package require json::write
             }
             return $fallbackMessage
         }
-        my diagnostic llm_response [dict create mode stream code $code \
+        set details [dict create mode stream code $code \
             duration_ms [expr {[clock milliseconds] - $requestStarted}]]
+        if {$streamingFinishReason ne ""} {
+            dict set details finish_reason $streamingFinishReason
+            $log log [expr {$streamingFinishReason eq "length" ? "warn" : "info"}] \
+                "LLM streaming response completed with finish_reason=$streamingFinishReason"
+        }
+        my diagnostic llm_response $details
         return $streamingMessage
     }
 
@@ -390,6 +412,12 @@ package require json::write
             return
         }
         set choice [lindex [dict get $event choices] 0]
+        if {[dict exists $choice finish_reason]} {
+            set reason [dict get $choice finish_reason]
+            if {$reason ne "" && $reason ne "null"} {
+                set streamingFinishReason $reason
+            }
+        }
         if {![dict exists $choice delta]} {
             return
         }
@@ -613,7 +641,8 @@ package require json::write
             return -code error "Parsing Error: response has no assistant message"
         }
 
-        set rawMessage [dict get [lindex [dict get $response choices] 0] message]
+        set choice [lindex [dict get $response choices] 0]
+        set rawMessage [dict get $choice message]
         if {![dict exists $rawMessage role] || [dict get $rawMessage role] ne "assistant"} {
             return -code error "Parsing Error: invalid assistant message"
         }
@@ -629,6 +658,12 @@ package require json::write
         foreach field {reasoning_content tool_calls} {
             if {[dict exists $rawMessage $field]} {
                 dict set message $field [dict get $rawMessage $field]
+            }
+        }
+        if {[dict exists $choice finish_reason]} {
+            set finishReason [dict get $choice finish_reason]
+            if {$finishReason ne "" && $finishReason ne "null"} {
+                dict set message finish_reason $finishReason
             }
         }
         if {![dict exists $message content] && ![dict exists $message tool_calls]} {

@@ -165,6 +165,36 @@ test agent-history-1.5 {excluded history and summary state are tracked} -body {
         summary "First turn summary" summarized_messages 2] \
     1]
 
+test agent-history-1.6 {restored summary survives budgeting for a vague follow-up} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    set client [::StructuredFakeLLMClient new [list \
+        [dict create role assistant content "Use option A."]]]
+    set agent [::tAgent new \
+        TestAgent "Test system role" $client $registry 4 "" 200 true 220]
+    set oldDetail [string repeat x 180]
+    try {
+        $agent replaceHistoryState [dict create messages [list \
+            [dict create role user content "Explain the package update bug"] \
+            [dict create role assistant content $oldDetail]] \
+            summary "The user is choosing between update strategies A and B." \
+            summarized_messages 0]
+        set answer [$agent run "what do you suggest?"]
+        set request [lindex [lindex [$client getCalls] 0] 1]
+        list $answer \
+            [lmap message $request {dict get $message role}] \
+            [expr {[string first "strategies A and B" \
+                [dict get [lindex $request 0] content]] >= 0}] \
+            [dict get [lindex $request end] content] \
+            [expr {[string first $oldDetail $request] < 0}]
+    } finally {
+        $agent destroy
+        $client destroy
+        $registry destroy
+    }
+} -result [list \
+    "Use option A." [list system user] 1 "what do you suggest?" 1]
+
 test agent-loop-1.1 {agent executes a plugin and returns the final answer} -body {
     set registry [::tPluginRegistry new \
         $projectDir [list [file join $projectDir plugins]]]
@@ -216,6 +246,31 @@ test agent-loop-1.1 {agent executes a plugin and returns the final answer} -body
     call_read \
     1 \
     4]
+
+test agent-truncation-1.1 {output-limit responses are errors and remain visible in history} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    set client [::StructuredFakeLLMClient new [list [dict create \
+        role assistant content "This answer was cut" finish_reason length]]]
+    set agent [::tAgent new \
+        TestAgent "Test system role" $client $registry 4]
+    try {
+        set code [catch {$agent run "Explain completely"} message options]
+        list $code $message [dict get $options -errorcode] [$agent getHistory]
+    } finally {
+        $agent destroy
+        $client destroy
+        $registry destroy
+    }
+} -result [list \
+    1 "Model response was truncated because its output token limit was reached" \
+    {OODZ TRUNCATED} \
+    [list \
+        [dict create role user content "Explain completely"] \
+        [dict create role assistant content "This answer was cut" \
+            finish_reason length] \
+        [dict create role assistant content \
+            "The previous task ended before a final response: Model response was truncated because its output token limit was reached"]]]
 
 test agent-loop-1.2 {tool-loop requests are re-bounded each iteration} -body {
     set firstCall [dict create id call_1 type function function [dict create \

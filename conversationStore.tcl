@@ -37,7 +37,7 @@ package require json::write
         }
 
         set fields [list role [::json::write string $role]]
-        foreach field {content reasoning_content tool_call_id} {
+        foreach field {content reasoning_content tool_call_id finish_reason} {
             if {[dict exists $message $field]} {
                 lappend fields $field [::json::write string [dict get $message $field]]
             }
