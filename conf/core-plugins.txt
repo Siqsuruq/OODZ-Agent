@@ -20,3 +20,8 @@ move_directory
 delete_file
 delete_directory
 create_directory
+
+# Essential Fossil inspection for small models
+fossil_status
+fossil_changes
+fossil_diff
