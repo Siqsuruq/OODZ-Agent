@@ -106,7 +106,10 @@ package require json::write
     method summary {} {
         set result [dict create requests 0 request_failures 0 tool_calls 0 \
             tool_failures 0 skipped_calls 0 compactions 0 iterations 0 \
-            input_tokens 0 output_tokens 0 total_tokens 0 request_duration_ms 0]
+            input_tokens 0 output_tokens 0 total_tokens 0 request_duration_ms 0 \
+            generation_tokens 0 generation_duration_ms 0 \
+            measured_responses 0 latest_tokens_per_second 0.0 \
+            average_tokens_per_second 0.0]
         set tools [dict create]
         set failedTools [dict create]
         foreach event $events {
@@ -116,6 +119,19 @@ package require json::write
                 llm_response {
                     if {[dict exists $event duration_ms]} {
                         dict incr result request_duration_ms [dict get $event duration_ms]
+                    }
+                    if {[dict exists $event output_tokens]
+                            && [dict exists $event generation_duration_ms]
+                            && [string is entier -strict [dict get $event output_tokens]]
+                            && [string is entier -strict [dict get $event generation_duration_ms]]
+                            && [dict get $event generation_duration_ms] > 0} {
+                        set outputTokens [dict get $event output_tokens]
+                        set generationDuration [dict get $event generation_duration_ms]
+                        dict incr result generation_tokens $outputTokens
+                        dict incr result generation_duration_ms $generationDuration
+                        dict incr result measured_responses
+                        dict set result latest_tokens_per_second [expr {
+                            1000.0 * $outputTokens / $generationDuration}]
                     }
                 }
                 llm_error {dict incr result request_failures}
@@ -141,6 +157,11 @@ package require json::write
                     }
                 }
             }
+        }
+        if {[dict get $result generation_duration_ms] > 0} {
+            dict set result average_tokens_per_second [expr {
+                1000.0 * [dict get $result generation_tokens]
+                / [dict get $result generation_duration_ms]}]
         }
         dict set result tools $tools
         dict set result failed_tools $failedTools

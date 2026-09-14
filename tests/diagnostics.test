@@ -10,7 +10,8 @@ test diagnostics-1.1 {structured events persist and summarize provider-neutral m
     set collector [::tDiagnostics new $path true 100]
     try {
         $collector record llm_request [dict create context_chars 1200]
-        $collector record llm_response [dict create duration_ms 250]
+        $collector record llm_response [dict create duration_ms 250 \
+            output_tokens 20 generation_duration_ms 200]
         $collector record usage [dict create input_tokens 100 \
             output_tokens 20 total_tokens 120]
         $collector record tool_call [dict create name read_file]
@@ -29,12 +30,37 @@ test diagnostics-1.1 {structured events persist and summarize provider-neutral m
             [dict get $summary tool_failures] \
             [dict get $summary skipped_calls] \
             [dict get $summary compactions] \
-            [dict get $summary tools read_file]
+            [dict get $summary tools read_file] \
+            [dict get $summary measured_responses] \
+            [format %.1f [dict get $summary latest_tokens_per_second]] \
+            [format %.1f [dict get $summary average_tokens_per_second]]
     } finally {
         if {[info object isa object $collector]} {$collector destroy}
         file delete -force $directory
     }
-} -result [list 8 1 120 250 2 1 1 1 2]
+} -result [list 8 1 120 250 2 1 1 1 2 1 100.0 100.0]
+
+test diagnostics-1.3 {token throughput is weighted and ignores unreported usage} -body {
+    set path [file join [temporaryDirectory] \
+        "throughput-diagnostics-[pid]-[clock clicks].jsonl"]
+    set collector [::tDiagnostics new $path true 100]
+    try {
+        $collector record llm_response [dict create duration_ms 900]
+        $collector record llm_response [dict create duration_ms 1000 \
+            output_tokens 100 generation_duration_ms 500]
+        $collector record llm_response [dict create duration_ms 2000 \
+            output_tokens 100 generation_duration_ms 1500]
+        set summary [$collector summary]
+        list [dict get $summary measured_responses] \
+            [dict get $summary generation_tokens] \
+            [dict get $summary generation_duration_ms] \
+            [format %.1f [dict get $summary latest_tokens_per_second]] \
+            [format %.1f [dict get $summary average_tokens_per_second]]
+    } finally {
+        $collector destroy
+        file delete -force $path
+    }
+} -result [list 2 200 2000 66.7 100.0]
 
 test diagnostics-1.2 {disabled diagnostics neither retain nor write events} -body {
     set path [file join [temporaryDirectory] \

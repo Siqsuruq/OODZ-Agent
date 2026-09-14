@@ -811,7 +811,11 @@ proc ::oodzGui::refreshDiagnostics {} {
         tools [dict get $summary tool_calls] \
         failures [expr {[dict get $summary tool_failures] + [dict get $summary request_failures]}] \
         skipped [dict get $summary skipped_calls] \
-        average "${average} ms"]
+        average "${average} ms" \
+        latest_tps [expr {[dict get $summary measured_responses] > 0 \
+            ? "[format %.1f [dict get $summary latest_tokens_per_second]] tok/s" : "N/A"}] \
+        overall_tps [expr {[dict get $summary measured_responses] > 0 \
+            ? "[format %.1f [dict get $summary average_tokens_per_second]] tok/s" : "N/A"}]]
     dict for {name value} $values {
         .diagnostics.cards.value_$name configure -text $value
     }
@@ -863,18 +867,21 @@ proc ::oodzGui::showDiagnostics {} {
     wm title .diagnostics "OODZ Diagnostics"
     wm minsize .diagnostics 760 600
     ttk::frame .diagnostics.cards -padding 10
-    set column 0
+    set index 0
     foreach {name label} {
         requests Requests tokens Tokens tools {Tool calls}
         failures Failures skipped Skipped average {Avg response}
+        latest_tps {Latest tok/s} overall_tps {Overall tok/s}
     } {
         ttk::labelframe .diagnostics.cards.card_$name -text $label -padding 10
         ttk::label .diagnostics.cards.value_$name -text 0 -font TkHeadingFont
         pack .diagnostics.cards.value_$name -in .diagnostics.cards.card_$name
-        grid .diagnostics.cards.card_$name -row 0 \
-            -column $column -sticky nsew -padx 4
+        set row [expr {$index / 4}]
+        set column [expr {$index % 4}]
+        grid .diagnostics.cards.card_$name -row $row \
+            -column $column -sticky nsew -padx 4 -pady 4
         grid columnconfigure .diagnostics.cards $column -weight 1
-        incr column
+        incr index
     }
     canvas .diagnostics.toolChart -height 245 -highlightthickness 1 \
         -highlightbackground #777777

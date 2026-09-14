@@ -109,7 +109,8 @@ package require json::write
     variable log provider apiKey modelUrl modelName timeout
     variable maxRetries retryDelay transport ownsTransport
     variable streamingMessage streamingToolCalls streamingFinishReason thinkingEnabled
-    variable reportedModel cancelRequested diagnostics
+    variable reportedModel cancelRequested diagnostics currentOutputTokens
+    variable streamFirstOutputAt
 
     constructor {configObj {transportObj ""}} {
         set log [::tLogger getLogger [self class]]
@@ -151,6 +152,8 @@ package require json::write
         set reportedModel ""
         set cancelRequested 0
         set diagnostics ""
+        set currentOutputTokens ""
+        set streamFirstOutputAt 0
 
         if {$transportObj eq ""} {
             set transport [::tHttpTransport new]
@@ -198,7 +201,6 @@ package require json::write
     }
 
     method recordUsage {response} {
-        if {$diagnostics eq ""} {return}
         set usage [dict create]
         if {[dict exists $response usage]} {
             set reported [dict get $response usage]
@@ -226,6 +228,10 @@ package require json::write
             dict set usage total_tokens [expr {
                 [dict get $usage input_tokens] + [dict get $usage output_tokens]}]
         }
+        if {[dict exists $usage output_tokens]} {
+            set currentOutputTokens [dict get $usage output_tokens]
+        }
+        if {$diagnostics eq ""} {return}
         if {[dict size $usage] > 0} {$diagnostics record usage $usage}
     }
 
@@ -247,6 +253,7 @@ package require json::write
         $log log info "Sending HTTP POST request to API..."
         my logRequestShape $messages
         set requestStarted [clock milliseconds]
+        set currentOutputTokens ""
         my diagnostic llm_request [dict create mode standard \
             message_count [llength $messages] \
             context_chars [string length $messages] tool_count [llength $tools]]
@@ -296,6 +303,11 @@ package require json::write
             set message [my parseResponseMessage $body]
             set details [dict create mode standard code $code \
                 duration_ms [expr {[clock milliseconds] - $requestStarted}]]
+            if {$currentOutputTokens ne ""} {
+                dict set details output_tokens $currentOutputTokens
+                dict set details generation_duration_ms \
+                    [dict get $details duration_ms]
+            }
             set finishReason [dict getdef $message finish_reason ""]
             if {$finishReason ne ""} {
                 dict set details finish_reason $finishReason
@@ -313,6 +325,8 @@ package require json::write
         $log log info "Sending streaming HTTP POST request to API..."
         my logRequestShape $messages
         set requestStarted [clock milliseconds]
+        set currentOutputTokens ""
+        set streamFirstOutputAt 0
         my diagnostic llm_request [dict create mode stream \
             message_count [llength $messages] \
             context_chars [string length $messages] tool_count [llength $tools]]
@@ -390,8 +404,14 @@ package require json::write
             }
             return $fallbackMessage
         }
+        set completedAt [clock milliseconds]
         set details [dict create mode stream code $code \
-            duration_ms [expr {[clock milliseconds] - $requestStarted}]]
+            duration_ms [expr {$completedAt - $requestStarted}]]
+        if {$currentOutputTokens ne "" && $streamFirstOutputAt > 0} {
+            dict set details output_tokens $currentOutputTokens
+            dict set details generation_duration_ms \
+                [expr {max(1, $completedAt - $streamFirstOutputAt)}]
+        }
         if {$streamingFinishReason ne ""} {
             dict set details finish_reason $streamingFinishReason
             $log log [expr {$streamingFinishReason eq "length" ? "warn" : "info"}] \
@@ -422,6 +442,17 @@ package require json::write
             return
         }
         set delta [dict get $choice delta]
+
+        if {$streamFirstOutputAt == 0} {
+            foreach field {content reasoning_content tool_calls} {
+                if {[dict exists $delta $field]
+                        && [dict get $delta $field] ne ""
+                        && [dict get $delta $field] ne "null"} {
+                    set streamFirstOutputAt [clock milliseconds]
+                    break
+                }
+            }
+        }
 
         foreach field {content reasoning_content} {
             if {[dict exists $delta $field] && [dict get $delta $field] ne "null"} {

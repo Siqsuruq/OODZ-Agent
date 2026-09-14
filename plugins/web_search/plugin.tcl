@@ -102,23 +102,16 @@ proc ::plugins::web_search::formatResults {query body limit} {
 }
 
 proc ::plugins::web_search::request {url settings} {
-    set timeout [positiveInteger [dict get $settings timeout_ms] \
-        "web_search timeout setting" 1 120000]
-    set maximum [positiveInteger \
-        [dict get $settings max_response_chars] \
-        "web_search response limit setting" 1 4194304]
+    set timeout [positiveInteger [dict get $settings timeout_ms] "web_search timeout setting" 1 120000]
+    set maximum [positiveInteger [dict get $settings max_response_chars] "web_search response limit setting" 1 4194304]
     if {[string match "https://*" $url]} {
         set verify [dict get $settings tls_verify]
         if {![string is boolean -strict $verify]} {
             error "web_search tls_verify setting must be boolean"
         }
-        ::http::register https 443 [list \
-            ::tls::socket -autoservername 1 \
-            -ssl2 0 -ssl3 0 -tls1 0 -tls1.1 0 \
-            -tls1.2 1 -tls1.3 1 -require [expr {$verify ? 1 : 0}]]
+        ::http::register https 443 [list ::tls::socket -autoservername 1 -ssl2 0 -ssl3 0 -tls1 0 -tls1.1 0 -tls1.2 1 -tls1.3 1 -require [expr {$verify ? 1 : 0}]]
     }
-    if {[catch {::http::geturl $url -headers [list \
-            Accept application/json] -timeout $timeout} token]} {
+    if {[catch {::http::geturl $url -headers [list Accept application/json] -timeout $timeout} token]} {
         error "web_search transport failed: $token"
     }
     try {
