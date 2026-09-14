@@ -106,6 +106,8 @@
     method runAgentLoop {messagesVariable} {
         upvar 1 $messagesVariable messages
         set previousToolFingerprint ""
+        set lastSuccessfulToolName ""
+        set lastSuccessfulToolResult ""
         for {set iteration 1} {$iteration <= $maxIterations} {incr iteration} {
             my checkCancelled
             my diagnostic iteration [dict create number $iteration]
@@ -130,15 +132,30 @@
             }
 
             if {![dict exists $assistantMessage tool_calls] || [llength [dict get $assistantMessage tool_calls]] == 0} {
-                lappend messages $assistantMessage
                 if {![dict exists $assistantMessage content] || [string trim [dict get $assistantMessage content]] eq ""} {
+                    if {$lastSuccessfulToolName ne ""} {
+                        set content "The model returned no final response after `$lastSuccessfulToolName` completed successfully.\n\nRaw tool result:\n\n$lastSuccessfulToolResult"
+                        lappend messages [dict create role assistant \
+                            content $content]
+                        $log log warn "Empty model response after successful plugin: $lastSuccessfulToolName; returning raw result"
+                        my diagnostic empty_response [dict create \
+                            after_tool $lastSuccessfulToolName \
+                            finish_reason [dict getdef \
+                                $assistantMessage finish_reason ""]]
+                        return [dict create content $content \
+                            messages $messages]
+                    }
+                    lappend messages $assistantMessage
                     error "Agent returned neither tool calls nor final content"
                 }
+                lappend messages $assistantMessage
                 return [dict create content [dict get $assistantMessage content] messages $messages]
             }
 
             lappend messages $assistantMessage
             set toolCalls [dict get $assistantMessage tool_calls]
+            set lastSuccessfulToolName ""
+            set lastSuccessfulToolResult ""
             set toolIndex 0
             foreach toolCall $toolCalls {
                 set callId [dict get $toolCall id]
@@ -185,6 +202,10 @@
                 my diagnostic tool_result [dict create name $toolName \
                     success $succeeded duration_ms $duration \
                     result_chars [string length $toolResult]]
+                if {$succeeded} {
+                    set lastSuccessfulToolName $toolName
+                    set lastSuccessfulToolResult $toolResult
+                }
                 lappend messages [dict create role tool content $toolResult tool_call_id $callId]
             }
         }

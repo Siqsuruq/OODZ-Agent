@@ -247,6 +247,59 @@ test agent-loop-1.1 {agent executes a plugin and returns the final answer} -body
     1 \
     4]
 
+test agent-loop-empty-1.1 {successful tool result survives an empty final response} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    set arguments [::json::write object \
+        path [::json::write string "main.tcl"] \
+        start_line 1 end_line 2]
+    set toolCall [dict create id call_read type function function \
+        [dict create name read_file arguments $arguments]]
+    set client [::StructuredFakeLLMClient new [list \
+        [dict create role assistant content "" tool_calls [list $toolCall]] \
+        [dict create role assistant content "" finish_reason stop]]]
+    set agent [::tAgent new \
+        TestAgent "Test system role" $client $registry 4]
+    try {
+        set answer [$agent run "Inspect main.tcl"]
+        set history [$agent getHistory]
+        list \
+            [expr {[string first "after `read_file` completed successfully" \
+                $answer] >= 0}] \
+            [expr {[string first "Raw tool result:" $answer] >= 0}] \
+            [expr {[string first "const version 1.0.0" $answer] >= 0}] \
+            [lmap message $history {dict get $message role}] \
+            [dict get [lindex $history end] content]
+    } finally {
+        $agent destroy
+        $client destroy
+        $registry destroy
+    }
+} -result [list 1 1 1 [list user assistant tool assistant] \
+    {The model returned no final response after `read_file` completed successfully.
+
+Raw tool result:
+
+1: #!/usr/bin/env tclsh
+2: const version 1.0.0}]
+
+test agent-loop-empty-1.2 {empty response without a successful tool remains an error} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir plugins]]]
+    set client [::StructuredFakeLLMClient new [list \
+        [dict create role assistant content "" finish_reason stop]]]
+    set agent [::tAgent new \
+        TestAgent "Test system role" $client $registry 4]
+    try {
+        catch {$agent run "Say something"} message
+        set message
+    } finally {
+        $agent destroy
+        $client destroy
+        $registry destroy
+    }
+} -result {Agent returned neither tool calls nor final content}
+
 test agent-truncation-1.1 {output-limit responses are errors and remain visible in history} -body {
     set registry [::tPluginRegistry new \
         $projectDir [list [file join $projectDir plugins]]]
