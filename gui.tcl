@@ -929,7 +929,7 @@ proc ::oodzGui::recentLogLines {path {maximumLines 2000} {maximumBytes 524288}} 
         seek $channel $offset start
         set bytes [read $channel]
     } finally {
-        close $channel
+        ::close $channel
     }
     if {$offset > 0} {
         set newline [string first "\n" $bytes]
