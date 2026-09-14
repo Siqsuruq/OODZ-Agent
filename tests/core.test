@@ -25,6 +25,22 @@ test logging-1.1 {diagnostics can be routed to a file and read on demand} -body 
     }
 } -result 1
 
+test logging-1.2 {bounded log tails preserve UTF-8 on Tcl 9 channels} -body {
+    set channel [file tempfile logPath]
+    try {
+        chan configure $channel -encoding utf-8 -translation lf
+        puts $channel "discard-[string repeat x 100]"
+        puts $channel "warning café"
+        puts $channel "final line"
+        close $channel
+        set channel ""
+        ::readRecentLog $logPath 2 40
+    } finally {
+        if {$channel ne ""} {close $channel}
+        file delete $logPath
+    }
+} -result "warning café\nfinal line"
+
 test config-ini-1.1 {supported INI backend saves and loads values} -body {
     set channel [file tempfile configPath]
     close $channel

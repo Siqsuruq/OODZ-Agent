@@ -921,27 +921,7 @@ proc ::oodzGui::showDiagnostics {} {
 
 proc ::oodzGui::recentLogLines {path {maximumLines 2000} {maximumBytes 524288}} {
     if {![file isfile $path]} {return {}}
-    set channel [open $path r]
-    try {
-        fconfigure $channel -translation binary -encoding binary
-        set size [file size $path]
-        set offset [expr {max(0, $size - $maximumBytes)}]
-        seek $channel $offset start
-        set bytes [read $channel]
-    } finally {
-        ::close $channel
-    }
-    if {$offset > 0} {
-        set newline [string first "\n" $bytes]
-        if {$newline >= 0} {
-            set bytes [string range $bytes [expr {$newline + 1}] end]
-        }
-    }
-    if {[catch {encoding convertfrom utf-8 $bytes} text]} {
-        set text $bytes
-    }
-    set lines [split [string trimright $text "\r\n"] "\n"]
-    return [lrange $lines end-[expr {$maximumLines - 1}] end]
+    return [split [::readRecentLog $path $maximumLines $maximumBytes] "\n"]
 }
 
 proc ::oodzGui::refreshLogs {} {

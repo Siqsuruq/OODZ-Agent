@@ -1057,7 +1057,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 189 Passed 189 Skipped 0 Failed 0
+all.tcl: Total 190 Passed 190 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the

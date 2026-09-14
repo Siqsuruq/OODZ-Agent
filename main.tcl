@@ -434,14 +434,29 @@ proc ::printConversationSeparator {outputChannel} {
     puts $outputChannel [::styleTerminalText $outputChannel [string repeat $character 56] {fg 60 dim 1}]
 }
 
-proc ::readRecentLog {path {lineLimit 20}} {
+proc ::readRecentLog {path {lineLimit 20} {byteLimit 0}} {
     if {$path eq "" || ![file exists $path]} {
         return "(no log entries)"
     }
     set channel [open $path r]
     try {
-        fconfigure $channel -encoding utf-8
-        set lines [split [string trimright [read $channel] "\n"] "\n"]
+        if {$byteLimit > 0 && [file size $path] > $byteLimit} {
+            # Tcl 9 no longer provides an encoding named "binary". ISO-8859-1
+            # gives a one-to-one byte mapping while binary translation avoids
+            # newline conversion, allowing a bounded seek from the file end.
+            chan configure $channel -translation binary -encoding iso8859-1
+            seek $channel [expr {[file size $path] - $byteLimit}] start
+            set bytes [read $channel]
+            set newline [string first "\n" $bytes]
+            if {$newline >= 0} {
+                set bytes [string range $bytes [expr {$newline + 1}] end]
+            }
+            set text [encoding convertfrom utf-8 $bytes]
+        } else {
+            chan configure $channel -encoding utf-8
+            set text [read $channel]
+        }
+        set lines [split [string trimright $text "\r\n"] "\n"]
     } finally {
         close $channel
     }
