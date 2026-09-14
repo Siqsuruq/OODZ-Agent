@@ -260,6 +260,8 @@ executed or opened automatically.
 - `Logging.file`: Diagnostic log path, resolved relative to the project unless
   absolute.
 - `Logging.level`: Minimum global log level.
+- `Logging.refresh_interval_ms`: GUI log viewer auto-refresh interval in
+  milliseconds. The default is 5 seconds and the minimum is 1 second.
 
 The API key remains in the user's private INI file by project decision. Never
 commit, archive, or share `conf/conf.ini`; publish only the example. If a key
@@ -774,7 +776,7 @@ wish gui.tcl
 The desktop interface provides a conversation view, multiline input,
 streaming responses, persistent history, New/Send/Stop controls, and write approval
 dialogs. Its menu can edit the configured workspace instruction file, open the
-Tools, Skills, and Diagnostics windows, and display the application version.
+Tools, Skills, Diagnostics, and raw Logs windows, and display the application version.
 Diagnostics shows request and token totals when reported by the provider,
 records provider finish reasons so truncated output can be distinguished from a normal stop,
 tool usage and failures, skipped calls, average response time, latest and

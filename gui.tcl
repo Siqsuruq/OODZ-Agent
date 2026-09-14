@@ -19,6 +19,10 @@ namespace eval ::oodzGui {
     variable diagnostics ""
     variable diagnosticsRefreshAfter ""
     variable diagnosticsRefreshInterval 10000
+    variable logPath ""
+    variable logRefreshAfter ""
+    variable logRefreshInterval 5000
+    variable logLevelFilter All
     variable workspaceRoot ""
     variable instructionPath ""
     variable approveAll 0
@@ -705,6 +709,7 @@ proc ::oodzGui::showTools {} {
 
 proc ::oodzGui::close {} {
     ::oodzGui::stopDiagnosticsRefresh
+    ::oodzGui::stopLogRefresh
     foreach name {
         agent historyStore changeTracker diagnostics registry pluginWorker commandExecutor commandRunner \
         instructionRegistry skillRegistry processRunner client backend config
@@ -914,6 +919,149 @@ proc ::oodzGui::showDiagnostics {} {
     ::oodzGui::scheduleDiagnosticsRefresh
 }
 
+proc ::oodzGui::recentLogLines {path {maximumLines 2000} {maximumBytes 524288}} {
+    if {![file isfile $path]} {return {}}
+    set channel [open $path r]
+    try {
+        fconfigure $channel -translation binary -encoding binary
+        set size [file size $path]
+        set offset [expr {max(0, $size - $maximumBytes)}]
+        seek $channel $offset start
+        set bytes [read $channel]
+    } finally {
+        close $channel
+    }
+    if {$offset > 0} {
+        set newline [string first "\n" $bytes]
+        if {$newline >= 0} {
+            set bytes [string range $bytes [expr {$newline + 1}] end]
+        }
+    }
+    if {[catch {encoding convertfrom utf-8 $bytes} text]} {
+        set text $bytes
+    }
+    set lines [split [string trimright $text "\r\n"] "\n"]
+    return [lrange $lines end-[expr {$maximumLines - 1}] end]
+}
+
+proc ::oodzGui::refreshLogs {} {
+    variable logPath
+    variable logLevelFilter
+    if {![winfo exists .logs]} {return}
+    set lines {}
+    foreach line [::oodzGui::recentLogLines $logPath] {
+        if {$logLevelFilter ne "All"
+                && [string first "\[$logLevelFilter\]" $line] < 0} {
+            continue
+        }
+        lappend lines $line
+    }
+    set lines [lrange $lines end-499 end]
+    .logs.body.text configure -state normal
+    .logs.body.text delete 1.0 end
+    foreach line $lines {
+        set tag INFO
+        foreach level {CRITICAL ERROR WARN INFO} {
+            if {[string first "\[$level\]" $line] >= 0} {
+                set tag $level
+                break
+            }
+        }
+        .logs.body.text insert end "$line\n" $tag
+    }
+    if {[llength $lines] == 0} {
+        .logs.body.text insert end "No matching log entries.\n" INFO
+    }
+    .logs.body.text configure -state disabled
+    .logs.body.text see end
+}
+
+proc ::oodzGui::stopLogRefresh {} {
+    variable logRefreshAfter
+    if {$logRefreshAfter ne ""} {
+        after cancel $logRefreshAfter
+        set logRefreshAfter ""
+    }
+}
+
+proc ::oodzGui::scheduleLogRefresh {} {
+    variable logRefreshAfter
+    variable logRefreshInterval
+    ::oodzGui::stopLogRefresh
+    if {[winfo exists .logs]} {
+        set logRefreshAfter [after $logRefreshInterval \
+            ::oodzGui::automaticLogRefresh]
+    }
+}
+
+proc ::oodzGui::automaticLogRefresh {} {
+    variable logRefreshAfter
+    set logRefreshAfter ""
+    if {![winfo exists .logs]} {return}
+    ::oodzGui::refreshLogs
+    ::oodzGui::scheduleLogRefresh
+}
+
+proc ::oodzGui::closeLogs {} {
+    ::oodzGui::stopLogRefresh
+    catch {destroy .logs}
+}
+
+proc ::oodzGui::showLogs {} {
+    variable logPath
+    variable logRefreshInterval
+    variable logLevelFilter
+    ::oodzGui::closeLogs
+    set logLevelFilter All
+    toplevel .logs
+    wm title .logs "OODZ Logs"
+    wm minsize .logs 820 520
+    ttk::frame .logs.controls -padding 10
+    ttk::label .logs.controls.filterLabel -text "Severity:"
+    ttk::combobox .logs.controls.filter -state readonly -width 12 \
+        -values {All INFO WARN ERROR CRITICAL} \
+        -textvariable ::oodzGui::logLevelFilter
+    ttk::button .logs.controls.refresh -text Refresh \
+        -command ::oodzGui::refreshLogs
+    ttk::label .logs.controls.interval -text \
+        "Auto-refresh: [format %.1f [expr {$logRefreshInterval / 1000.0}]] s"
+    ttk::button .logs.controls.close -text Close \
+        -command ::oodzGui::closeLogs
+    pack .logs.controls.filterLabel .logs.controls.filter \
+        .logs.controls.refresh .logs.controls.interval -side left -padx {0 8}
+    pack .logs.controls.close -side right
+
+    ttk::frame .logs.body -padding {10 0 10 10}
+    text .logs.body.text -wrap none -state disabled -font TkFixedFont \
+        -background #151821 -foreground #d8dee9 -insertbackground white
+    ttk::scrollbar .logs.body.vertical -orient vertical \
+        -command [list .logs.body.text yview]
+    ttk::scrollbar .logs.body.horizontal -orient horizontal \
+        -command [list .logs.body.text xview]
+    .logs.body.text configure \
+        -yscrollcommand [list .logs.body.vertical set] \
+        -xscrollcommand [list .logs.body.horizontal set]
+    .logs.body.text tag configure INFO -foreground #d8dee9
+    .logs.body.text tag configure WARN -foreground #f4bf75
+    .logs.body.text tag configure ERROR -foreground #ff6b6b
+    .logs.body.text tag configure CRITICAL -foreground #ff3b3b
+    grid .logs.body.text -row 0 -column 0 -sticky nsew
+    grid .logs.body.vertical -row 0 -column 1 -sticky ns
+    grid .logs.body.horizontal -row 1 -column 0 -sticky ew
+    grid rowconfigure .logs.body 0 -weight 1
+    grid columnconfigure .logs.body 0 -weight 1
+    grid .logs.controls -row 0 -column 0 -sticky ew
+    grid .logs.body -row 1 -column 0 -sticky nsew
+    grid rowconfigure .logs 1 -weight 1
+    grid columnconfigure .logs 0 -weight 1
+    bind .logs.controls.filter <<ComboboxSelected>> ::oodzGui::refreshLogs
+    bind .logs.body.text <Button-3> \
+        {::oodzGui::showTextContextMenu %W %X %Y %x %y; break}
+    wm protocol .logs WM_DELETE_WINDOW ::oodzGui::closeLogs
+    ::oodzGui::refreshLogs
+    ::oodzGui::scheduleLogRefresh
+}
+
 proc ::oodzGui::maximizeWindow {} {
     update idletasks
     set windowSystem [tk windowingsystem]
@@ -1029,6 +1177,7 @@ proc ::oodzGui::buildWidgets {} {
     .menuBar.view add command -label Skills -command ::oodzGui::showSkills
     .menuBar.view add command -label Diagnostics \
         -command ::oodzGui::showDiagnostics
+    .menuBar.view add command -label Logs -command ::oodzGui::showLogs
     menu .menuBar.help -tearoff 0
     .menuBar add cascade -label Help -menu .menuBar.help
     .menuBar.help add command -label "Available Skills" \
@@ -1115,6 +1264,8 @@ proc ::oodzGui::start {} {
     variable changeTracker
     variable diagnostics
     variable diagnosticsRefreshInterval
+    variable logPath
+    variable logRefreshInterval
     variable workspaceRoot
 
     set config [::Config new]
@@ -1130,6 +1281,11 @@ proc ::oodzGui::start {} {
     file mkdir [file dirname $logPath]
     ::tLogger setAppenderFactory [list ::FileAppender new $logPath]
     [::tLogger getLogger "Global"] setLogLevel [$config get Logging.level info]
+    set logRefreshInterval [$config get Logging.refresh_interval_ms 5000]
+    if {![string is integer -strict $logRefreshInterval]
+            || $logRefreshInterval < 1000} {
+        error "Logging.refresh_interval_ms must be an integer of at least 1000"
+    }
     set workspaceRoot [::resolveWorkspaceRoot $scriptDir [$config get Workspace.root .]]
     set diagnosticsPath [$config get Diagnostics.file .oodz/diagnostics.jsonl]
     if {[file pathtype $diagnosticsPath] ne "absolute"} {
