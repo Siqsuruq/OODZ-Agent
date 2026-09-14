@@ -492,8 +492,9 @@ proc ::oodzGui::buildToolForm {definition} {
                 && [dict get $property default] ? 1 : 0}]
             ttk::checkbutton .tools.right.form.value$row \
                 -variable $variableName
-        } elseif {$type eq "string"
-                && $name in {content patch old_text new_text json note}} {
+        } elseif {($type eq "string"
+                && $name in {content old_text new_text json note})
+                || $type in {object array}} {
             set mode text
             text .tools.right.form.value$row -height 3 -wrap word \
                 -padx 6 -pady 4

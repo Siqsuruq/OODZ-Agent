@@ -428,10 +428,16 @@ test apply-patch-1.1 {apply_patch makes multiple exact changes atomically} -body
     set registry [::tPluginRegistry new \
         $temporaryRoot [list [file join $projectDir plugins]] \
         [list ::ApprovalMock::decide]]
-    set patchText "<<<<<<< SEARCH\nalpha\n=======\nfirst\n>>>>>>> REPLACE\n<<<<<<< SEARCH\ngamma\n=======\nthird\n>>>>>>> REPLACE"
+    set changes [::json::write array \
+        [::json::write object \
+            old_text [::json::write string alpha] \
+            new_text [::json::write string first]] \
+        [::json::write object \
+            old_text [::json::write string gamma] \
+            new_text [::json::write string third]]]
     set arguments [::json::write object \
         path [::json::write string sample.txt] \
-        patch [::json::write string $patchText]]
+        changes $changes]
 
     try {
         set ::ApprovalMock::approved 1
@@ -439,11 +445,17 @@ test apply-patch-1.1 {apply_patch makes multiple exact changes atomically} -body
         set channel [open $target r]
         set content [read $channel]
         close $channel
-        set badPatch "<<<<<<< SEARCH\nmissing\n=======\nchanged\n>>>>>>> REPLACE"
+        set badChanges [::json::write array \
+            [::json::write object \
+                old_text [::json::write string first] \
+                new_text [::json::write string changed]] \
+            [::json::write object \
+                old_text [::json::write string missing] \
+                new_text [::json::write string changed]]]
         set failedCode [catch {
             $registry invoke apply_patch [::json::write object \
                 path [::json::write string sample.txt] \
-                patch [::json::write string $badPatch]]
+                changes $badChanges]
         } failedMessage]
         set channel [open $target r]
         set contentAfterFailure [read $channel]
@@ -454,10 +466,57 @@ test apply-patch-1.1 {apply_patch makes multiple exact changes atomically} -body
         file delete -force $temporaryRoot
     }
 } -result [list \
-    "Applied patch to: sample.txt (2 change(s))" \
+    "Applied changes to: sample.txt (2 change(s))" \
     "first\nbeta\nthird\n" \
-    1 "Patch SEARCH text was not found in: sample.txt" \
+    1 "apply_patch change 2 old_text was not found in: sample.txt" \
     "first\nbeta\nthird\n"]
+
+test apply-patch-1.2 {apply_patch rejects malformed structured changes} -body {
+    set temporaryRoot [file join [temporaryDirectory] \
+        "oodz-patch-validation-[pid]-[clock clicks]"]
+    file mkdir $temporaryRoot
+    set target [file join $temporaryRoot sample.txt]
+    set channel [open $target w]
+    puts -nonewline $channel "unchanged"
+    close $channel
+    set registry [::tPluginRegistry new \
+        $temporaryRoot [list [file join $projectDir plugins]] \
+        [list ::ApprovalMock::decide]]
+    set ::ApprovalMock::approved 1
+    try {
+        set emptyCode [catch {
+            $registry invoke apply_patch [::json::write object \
+                path [::json::write string sample.txt] \
+                changes [::json::write array]]
+        } emptyMessage]
+        set invalidCode [catch {
+            $registry invoke apply_patch [::json::write object \
+                path [::json::write string sample.txt] \
+                changes [::json::write array [::json::write object \
+                    old_text [::json::write string unchanged] \
+                    replacement [::json::write string changed]]]]
+        } invalidMessage]
+        set blankCode [catch {
+            $registry invoke apply_patch [::json::write object \
+                path [::json::write string sample.txt] \
+                changes [::json::write array [::json::write object \
+                    old_text [::json::write string ""] \
+                    new_text [::json::write string changed]]]]
+        } blankMessage]
+        set channel [open $target r]
+        set content [read $channel]
+        close $channel
+        list $emptyCode $emptyMessage $invalidCode $invalidMessage \
+            $blankCode $blankMessage $content
+    } finally {
+        $registry destroy
+        file delete -force $temporaryRoot
+    }
+} -result [list \
+    1 "apply_patch changes must contain between 1 and 100 items" \
+    1 "apply_patch change 1 must contain only old_text and new_text" \
+    1 "apply_patch change 1 old_text must not be empty" \
+    unchanged]
 
 test write-file-1.2 {CLI approval accepts yes and defaults to denial} -body {
     set inputChannel [file tempfile inputPath]
