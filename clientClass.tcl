@@ -597,6 +597,13 @@ package require json::write
         }
         if {$stream} {
             lappend fields stream true
+            # Ollama's OpenAI-compatible endpoint emits the final usage block
+            # for a stream when explicitly requested. Without it the GUI can
+            # measure elapsed time but cannot calculate tokens per second.
+            if {$provider eq "ollama"} {
+                lappend fields stream_options [::json::write object \
+                    include_usage true]
+            }
         }
 
         return [::json::write object {*}$fields]

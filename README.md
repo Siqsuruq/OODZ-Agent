@@ -779,8 +779,10 @@ Diagnostics shows request and token totals when reported by the provider,
 records provider finish reasons so truncated output can be distinguished from a normal stop,
 tool usage and failures, skipped calls, average response time, latest and
 weighted-overall output tokens per second, and graphs of
-tool frequency and request-context size. Saved workspace
-instructions become active on the next request without restarting the agent or
+tool frequency and request-context size.
+Ollama streaming requests explicitly request the final usage block required
+for token-throughput calculation.
+Saved workspace instructions become active on the next request without restarting the agent or
 clearing its conversation. Stop aborts an active model HTTP request and prevents
 automatic retry or fallback for that request. Assistant Markdown is styled while it streams
 without reparsing the entire conversation. Its Tools dialog lists every
@@ -1053,7 +1055,7 @@ of this project verification command.
 A successful run ends with output similar to:
 
 ```text
-all.tcl: Total 188 Passed 188 Skipped 0 Failed 0
+all.tcl: Total 189 Passed 189 Skipped 0 Failed 0
 ```
 
 The same test command can be invoked with an absolute path from outside the
