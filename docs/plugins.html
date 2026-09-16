@@ -20,7 +20,8 @@
         <section id="layout"><h2>Directory layout</h2><p>Place each plugin in one direct child directory of a configured plugin root.</p><div class="file-tree">plugins/
 └── my_tool/
     ├── plugin.ini
-    └── plugin.tcl</div><p class="mt-3">Discovery is deterministic. Nested plugin directories are not recursively registered.</p></section>
+    ├── plugin.tcl
+    └── lib/                 # optional bundled Tcl packages</div><p class="mt-3">Discovery is deterministic. Nested plugin directories are not recursively registered. Before loading an entrypoint, OODZ adds its optional <code>lib/</code> directory to the plugin interpreter's Tcl package path, allowing ordinary <code>package require</code> calls. Standard package locations remain higher priority. Plugin-local libraries work in direct and worker-thread execution, but the current shared plugin interpreter does not isolate dependency versions between plugins.</p></section>
         <section id="manifest">
           <h2>Manifest</h2><p>The manifest is the contract between the handler, registry, and model.</p>
           <div class="code-block"><header><span>plugin.ini</span><span>ini</span></header><pre><code>[plugin]

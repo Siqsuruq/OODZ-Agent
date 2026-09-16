@@ -7,6 +7,7 @@ plugins/
   example_tool/
     plugin.ini
     plugin.tcl
+    lib/                 # Optional bundled Tcl packages
 ```
 
 Personal plugin roots can be kept outside the repository and enabled in
@@ -20,6 +21,38 @@ directories = /home/max/.oodz/plugins
 Multiple roots are comma-separated. Relative paths resolve from the agent
 installation directory. Every configured root must already exist. The built-in
 `plugins/` root is always loaded first, and duplicate tool names are rejected.
+
+## Bundled Tcl packages
+
+A plugin may carry dependencies in an optional `lib/` directory:
+
+```text
+example_tool/
+  plugin.ini
+  plugin.tcl
+  lib/
+    example_dependency1.0/
+      pkgIndex.tcl
+      example_dependency.tcl
+```
+
+Before sourcing `plugin.tcl`, OODZ appends that plugin's `lib/` directory to
+the plugin interpreter's Tcl package search path. The entrypoint can load the
+dependency normally:
+
+```tcl
+package require example_dependency 1.0
+```
+
+Keep each dependency's `pkgIndex.tcl` with the bundled package. Standard Tcl
+package locations are searched before plugin-local libraries, so a bundled
+package does not override an installed package. Plugin libraries are available
+in both direct and worker-thread execution.
+
+The current registry uses one interpreter for all discovered plugins. Local
+libraries prevent files from being copied into OODZ's shared `lib/`, but they
+do not provide version isolation between plugins. Binary extensions must match
+the operating system, CPU architecture, Tcl version, and thread requirements.
 
 ## Manifest
 
@@ -101,3 +134,23 @@ they do not make untrusted plugin code safe.
 Plugins marked `permission = write` require the registry host to provide an
 approval callback. The standard CLI asks for confirmation before each write.
 Read-only plugins execute without approval.
+
+## Database plugins
+
+The bundled `database_*` plugins use TDBC profiles stored in the active
+workspace at `.oodz/databases.ini`. Copy `conf/databases.example.ini` there and
+edit the driver options. For PostgreSQL on Windows, ensure `tdbc` and
+`tdbc::postgres` are installed for the same Tcl 9 runtime used by OODZ Agent.
+
+Passwords are referenced by environment-variable name and must not be written
+to the profile file. For example, in PowerShell before launching OODZ:
+
+```powershell
+$env:OODZ_DATABASE_PASSWORD = "your-password"
+```
+
+`database_tables`, `database_describe`, and `database_query` request a TDBC
+read-only connection. `database_execute` additionally requires both
+`allow_write = true` in the selected profile and normal OODZ write approval.
+Queries use TDBC named parameters such as `where id = :id`; pass their values
+through the tool's `parameters` object instead of interpolating SQL strings.

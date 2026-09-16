@@ -143,4 +143,15 @@ test plugin-worker-1.5 {worker reconstructs configured process runner} -body {
     }
 } -result "hello from worker"
 
+test plugin-worker-1.6 {worker loads plugin-local Tcl packages} -body {
+    set worker [tPluginWorker new \
+        $projectDir $projectDir [list [file join $projectDir tests fixtures \
+            local_lib_plugins]] 1000 65536]
+    try {
+        $worker invoke local_library [::json::write object]
+    } finally {
+        $worker destroy
+    }
+} -result "loaded plugin-local package"
+
 ::finishTests

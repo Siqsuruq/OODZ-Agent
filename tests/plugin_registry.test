@@ -23,9 +23,9 @@ test plugins-1.1 {built-in plugins are discovered and invoked} -body {
         $registry destroy
     }
 } -result [list \
-    [list apply_patch copy_file create_directory create_file delete_directory delete_file file_info find_files fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_clone fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_directory move_directory move_file oodz_lookup oodz_read oodz_search open_browser random_string read_file replace_text save_translation search_text sqitch_add sqitch_deploy sqitch_log sqitch_plan sqitch_revert sqitch_rework sqitch_show sqitch_status sqitch_tag sqitch_verify system_info unzip web_search write_file xml_validate zip] \
+    [list apply_patch copy_file create_directory create_file database_describe database_execute database_query database_tables delete_directory delete_file file_info find_files fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_clone fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_directory move_directory move_file oodz_lookup oodz_read oodz_search open_browser random_string read_file replace_text save_translation search_text sqitch_add sqitch_deploy sqitch_log sqitch_plan sqitch_revert sqitch_rework sqitch_show sqitch_status sqitch_tag sqitch_verify system_info unzip web_search write_file xml_validate zip] \
     1 1 1 \
-    [list apply_patch copy_file create_directory create_file delete_directory delete_file file_info find_files fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_clone fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_directory move_directory move_file oodz_lookup oodz_read oodz_search open_browser random_string read_file replace_text save_translation search_text sqitch_add sqitch_deploy sqitch_log sqitch_plan sqitch_revert sqitch_rework sqitch_show sqitch_status sqitch_tag sqitch_verify system_info unzip web_search write_file xml_validate zip]]
+    [list apply_patch copy_file create_directory create_file database_describe database_execute database_query database_tables delete_directory delete_file file_info find_files fossil_add fossil_branch_close fossil_branch_info fossil_branch_new fossil_branch_reopen fossil_branch_switch fossil_branches fossil_changes fossil_clone fossil_commit fossil_diff fossil_extras fossil_info fossil_ls fossil_merge fossil_pull fossil_push fossil_redo fossil_remove fossil_revert fossil_stash_list fossil_stash_pop fossil_stash_save fossil_status fossil_timeline fossil_undo fossil_update http_delete http_get http_patch http_post http_put list_directory move_directory move_file oodz_lookup oodz_read oodz_search open_browser random_string read_file replace_text save_translation search_text sqitch_add sqitch_deploy sqitch_log sqitch_plan sqitch_revert sqitch_rework sqitch_show sqitch_status sqitch_tag sqitch_verify system_info unzip web_search write_file xml_validate zip]]
 
 test plugins-lazy-1.1 {lazy registry exposes core tools and activates index matches} -body {
     set registry [::tPluginRegistry new \
@@ -219,6 +219,17 @@ test plugins-settings-1.1 {private settings reach only the plugin handler} -body
         $registry destroy
     }
 } -result [list http://127.0.0.1:8080 0 1 1]
+
+test plugins-local-lib-1.1 {plugin entrypoint loads a bundled Tcl package} -body {
+    set registry [::tPluginRegistry new \
+        $projectDir [list [file join $projectDir tests fixtures \
+            local_lib_plugins]]]
+    try {
+        $registry invoke local_library [::json::write object]
+    } finally {
+        $registry destroy
+    }
+} -result "loaded plugin-local package"
 
 test plugins-1.2 {plugin calls reject invalid names, arguments, and paths} -body {
     set registry [::tPluginRegistry new \

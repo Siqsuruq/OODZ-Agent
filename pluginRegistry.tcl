@@ -206,6 +206,7 @@ namespace eval ::PluginSupport {
         }
         set plugins [dict create]
         set pluginInterpreter [interp create]
+        interp eval $pluginInterpreter [list set ::auto_path $::auto_path]
         interp eval $pluginInterpreter {namespace eval ::PluginSupport {}}
         interp alias $pluginInterpreter \
             ::PluginSupport::resolveWorkspacePath {} \
@@ -387,6 +388,18 @@ namespace eval ::PluginSupport {
         }
 
         set handler [dict get $manifest handler]
+        set libraryPath [file join $pluginPath lib]
+        if {[file isdirectory $libraryPath]} {
+            set libraryPath [file normalize $libraryPath]
+            if {![::PluginSupport::isWithin $libraryPath $pluginPath]} {
+                error "Plugin library directory escapes plugin: $name"
+            }
+            interp eval $pluginInterpreter [list apply {{path} {
+                if {$path ni $::auto_path} {
+                    lappend ::auto_path $path
+                }
+            }} $libraryPath]
+        }
         interp eval $pluginInterpreter [list source $implementationPath]
         if {[llength [interp eval $pluginInterpreter \
                 [list info commands $handler]]] != 1} {

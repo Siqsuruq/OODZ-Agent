@@ -1,0 +1,52 @@
+#!/usr/bin/env tclsh
+
+source [file join [file dirname [file normalize [info script]]] support.tcl]
+
+test database-plugins-1.1 {database tools use profiles, bounds, metadata, and approval} -body {
+    set root [file join [temporaryDirectory] "database-plugin-[pid]-[clock clicks]"]
+    file mkdir [file join $root .oodz]
+    set channel [open [file join $root .oodz databases.ini] w]
+    puts $channel {[database]
+default_profile = test
+max_rows = 2
+max_value_chars = 16
+
+[test]
+package = tdbc::fake
+options = -host ignored
+allow_write = true}
+    close $channel
+    lappend auto_path [file join $projectDir tests fixtures database_lib]
+    set registry [::tPluginRegistry new $root \
+        [list [file join $projectDir plugins]] ::ApprovalMock::decide]
+    try {
+        set ::ApprovalMock::approved 1
+        set tables [$registry invoke database_tables [::json::write object]]
+        set description [$registry invoke database_describe [::json::write object \
+            table [::json::write string people]]]
+        set query [$registry invoke database_query [::json::write object \
+            sql [::json::write string {select * from people}] \
+            max_rows 2]]
+        set ::ApprovalMock::approved 0
+        set denied [catch {$registry invoke database_execute [::json::write object \
+            sql [::json::write string {update people set name=:name}] \
+            parameters [::json::write object name [::json::write string New]]]} deniedMessage]
+        set ::ApprovalMock::approved 1
+        set executed [$registry invoke database_execute [::json::write object \
+            sql [::json::write string {update people set name=:name}] \
+            parameters [::json::write object name [::json::write string New]]]]
+        list \
+            [expr {[string first people $tables] >= 0}] \
+            [expr {[string first primary_keys $description] >= 0}] \
+            [expr {[string first {returned_rows 2} $query] >= 0}] \
+            [expr {[string first {truncated true} $query] >= 0}] \
+            $denied $deniedMessage \
+            [expr {[string first {status executed} $executed] >= 0}]
+    } finally {
+        $registry destroy
+        file delete -force $root
+    }
+} -result [list 1 1 1 1 1 \
+    "Plugin execution denied: database_execute" 1]
+
+::finishTests
