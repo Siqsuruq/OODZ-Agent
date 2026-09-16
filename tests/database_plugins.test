@@ -4,8 +4,14 @@ source [file join [file dirname [file normalize [info script]]] support.tcl]
 
 test database-plugins-1.1 {database tools use profiles, bounds, metadata, and approval} -body {
     set root [file join [temporaryDirectory] "database-plugin-[pid]-[clock clicks]"]
-    file mkdir [file join $root .oodz]
-    set channel [open [file join $root .oodz databases.ini] w]
+    set pluginRoot [file join $root plugins]
+    file mkdir $pluginRoot
+    file copy [file join $projectDir plugins database_common.tcl] $pluginRoot
+    foreach name {database_tables database_describe database_query database_execute} {
+        file copy [file join $projectDir plugins $name] $pluginRoot
+    }
+    set profilePath [file join $root databases.ini]
+    set channel [open $profilePath w]
     puts $channel {[database]
 default_profile = test
 max_rows = 2
@@ -16,9 +22,21 @@ package = tdbc::fake
 options = -host ignored
 allow_write = true}
     close $channel
+    foreach name {database_tables database_describe database_query database_execute} {
+        set manifest [file join $pluginRoot $name plugin.ini]
+        set channel [open $manifest r]
+        set content [read $channel]
+        close $channel
+        set content [string map [list \
+            {profile_file = conf/databases.ini} \
+            "profile_file = $profilePath"] $content]
+        set channel [open $manifest w]
+        puts -nonewline $channel $content
+        close $channel
+    }
     lappend auto_path [file join $projectDir tests fixtures database_lib]
     set registry [::tPluginRegistry new $root \
-        [list [file join $projectDir plugins]] ::ApprovalMock::decide]
+        [list $pluginRoot] ::ApprovalMock::decide]
     try {
         set ::ApprovalMock::approved 1
         set tables [$registry invoke database_tables [::json::write object]]

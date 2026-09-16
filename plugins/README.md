@@ -137,9 +137,11 @@ Read-only plugins execute without approval.
 
 ## Database plugins
 
-The bundled `database_*` plugins use TDBC profiles stored in the active
-workspace at `.oodz/databases.ini`. Copy `conf/databases.example.ini` there and
-edit the driver options. For PostgreSQL on Windows, ensure `tdbc` and
+The bundled `database_*` plugins use agent-level TDBC profiles stored at
+`conf/databases.ini`. Copy `conf/databases.example.ini` to that path and edit
+the driver options. Profiles are deliberately not loaded from the workspace:
+database connectivity belongs to agent configuration, not project content.
+For PostgreSQL on Windows, ensure `tdbc` and
 `tdbc::postgres` are installed for the same Tcl 9 runtime used by OODZ Agent.
 
 Passwords are referenced by environment-variable name and must not be written

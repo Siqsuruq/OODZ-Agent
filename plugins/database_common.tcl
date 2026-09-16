@@ -1,17 +1,25 @@
 package require inifile
 
-namespace eval ::plugins::database_common {}
+namespace eval ::plugins::database_common {
+    variable applicationRoot [file dirname [file dirname \
+        [file normalize [info script]]]]
+}
 
 proc ::plugins::database_common::settings {workspaceRoot pluginSettings} {
-    set relative [dict getdef $pluginSettings profile_file .oodz/databases.ini]
-    set path [::PluginSupport::resolveWorkspacePath $workspaceRoot $relative]
+    variable applicationRoot
+    set configured [dict getdef $pluginSettings profile_file conf/databases.ini]
+    if {[file pathtype $configured] eq "absolute"} {
+        set path [file normalize $configured]
+    } else {
+        set path [file normalize [file join $applicationRoot $configured]]
+    }
     if {![file isfile $path]} {
-        error "Database profile file does not exist: $relative"
+        error "Database profile file does not exist: $configured"
     }
     set ini [::ini::open $path r]
     try {
         if {"database" ni [::ini::sections $ini]} {
-            error "Database profile file is missing \[database\]: $relative"
+            error "Database profile file is missing \[database\]: $configured"
         }
         set result [dict create]
         foreach key [::ini::keys $ini database] {
