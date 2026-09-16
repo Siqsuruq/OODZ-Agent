@@ -25,3 +25,9 @@ create_directory
 fossil_status
 fossil_changes
 fossil_diff
+
+# Database access
+database_tables
+database_describe
+database_query
+database_execute
