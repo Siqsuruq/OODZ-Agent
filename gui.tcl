@@ -730,15 +730,27 @@ proc ::oodzGui::diagnosticNumber {value} {
     return $value
 }
 
+proc ::oodzGui::diagnosticPalette {} {
+    set background [ttk::style lookup TFrame -background]
+    set foreground [ttk::style lookup TLabel -foreground]
+    if {$background eq ""} {set background white}
+    if {$foreground eq ""} {set foreground black}
+    return [dict create background $background foreground $foreground]
+}
+
 proc ::oodzGui::drawDiagnosticBars {canvas counts} {
     $canvas delete all
+    set palette [::oodzGui::diagnosticPalette]
+    set foreground [dict get $palette foreground]
+    $canvas configure -background [dict get $palette background]
     set width [winfo width $canvas]
     if {$width < 100} {set width 760}
     set rows {}
     dict for {name count} $counts {lappend rows [list $count $name]}
     set rows [lrange [lsort -integer -decreasing -index 0 $rows] 0 9]
     if {[llength $rows] == 0} {
-        $canvas create text 12 20 -anchor nw -text "No tool calls recorded yet."
+        $canvas create text 12 20 -anchor nw -fill $foreground \
+            -text "No tool calls recorded yet."
         return
     }
     set maximum [lindex [lindex $rows 0] 0]
@@ -746,17 +758,21 @@ proc ::oodzGui::drawDiagnosticBars {canvas counts} {
     foreach row $rows {
         lassign $row count name
         set barWidth [expr {int(($width - 220) * $count / double($maximum))}]
-        $canvas create text 8 [expr {$y + 9}] -anchor w -text $name
+        $canvas create text 8 [expr {$y + 9}] -anchor w \
+            -fill $foreground -text $name
         $canvas create rectangle 150 $y [expr {150 + $barWidth}] \
             [expr {$y + 18}] -fill #5294e2 -outline {}
         $canvas create text [expr {160 + $barWidth}] [expr {$y + 9}] \
-            -anchor w -text $count
+            -anchor w -fill $foreground -text $count
         incr y 23
     }
 }
 
 proc ::oodzGui::drawDiagnosticTimeline {canvas events} {
     $canvas delete all
+    set palette [::oodzGui::diagnosticPalette]
+    set foreground [dict get $palette foreground]
+    $canvas configure -background [dict get $palette background]
     set values {}
     foreach event $events {
         if {[dict get $event type] eq "llm_request"
@@ -769,9 +785,11 @@ proc ::oodzGui::drawDiagnosticTimeline {canvas events} {
     set height [winfo height $canvas]
     if {$width < 100} {set width 760}
     if {$height < 100} {set height 210}
-    $canvas create text 8 8 -anchor nw -text "Context characters per LLM request (latest 60)"
+    $canvas create text 8 8 -anchor nw -fill $foreground \
+        -text "Context characters per LLM request (latest 60)"
     if {[llength $values] == 0} {
-        $canvas create text 8 35 -anchor nw -text "No requests recorded yet."
+        $canvas create text 8 35 -anchor nw -fill $foreground \
+            -text "No requests recorded yet."
         return
     }
     set maximum [lindex [lsort -integer -decreasing $values] 0]
@@ -781,8 +799,10 @@ proc ::oodzGui::drawDiagnosticTimeline {canvas events} {
     set bottom [expr {$height - 22}]
     set plotWidth [expr {$width - $left - 15}]
     set plotHeight [expr {$bottom - $top}]
-    $canvas create line $left $top $left $bottom [expr {$left + $plotWidth}] $bottom -fill #888888
-    $canvas create text 4 $top -anchor nw -text [::oodzGui::diagnosticNumber $maximum]
+    $canvas create line $left $top $left $bottom \
+        [expr {$left + $plotWidth}] $bottom -fill $foreground
+    $canvas create text 4 $top -anchor nw -fill $foreground \
+        -text [::oodzGui::diagnosticNumber $maximum]
     set points {}
     set divisor [expr {max(1, [llength $values] - 1)}]
     set index 0
@@ -1102,6 +1122,9 @@ proc ::oodzGui::toggleTheme {} {
     }
     ttk::style theme use $theme
     ::oodzGui::applyTextTheme
+    if {[winfo exists .diagnostics]} {
+        ::oodzGui::refreshDiagnostics
+    }
 }
 
 proc ::oodzGui::contextAction {eventName} {
